@@ -1,0 +1,84 @@
+```plaintext
+<GitConfigLayout>:
+    orientation: 'vertical'
+    padding: 10
+    spacing: 10
+
+    BoxLayout:
+        size_hint_y: None
+        height: 50
+        Label:
+            text: 'Git Username'
+            size_hint_x: 0.3
+        TextInput:
+            id: username
+            multiline: False
+            size_hint_x: 0.7
+
+    BoxLayout:
+        size_hint_y: None
+        height: 50
+        Label:
+            text: 'Git Email'
+            size_hint_x: 0.3
+        TextInput:
+            id: email
+            multiline: False
+            size_hint_x: 0.7
+
+    BoxLayout:
+        size_hint_y: None
+        height: 50
+        Label:
+            text: 'Repository Link'
+            size_hint_x: 0.3
+        TextInput:
+            id: repo_link
+            multiline: False
+            size_hint_x: 0.7
+
+    BoxLayout:
+        size_hint_y: None
+        height: 50
+        Label:
+            text: 'Commit Message (Optional)'
+            size_hint_x: 0.3
+        TextInput:
+            id: commit_message
+            multiline: False
+            size_hint_x: 0.7
+
+    BoxLayout:
+        size_hint_y: None
+        height: 50
+        Label:
+            text: 'Local Vault Link'
+            size_hint_x: 0.3
+        TextInput:
+            id: local_vault_link
+            multiline: False
+            size_hint_x: 0.5
+        Button:
+            text: '📁'
+            size_hint_x: 0.2
+            on_press: root.select_local_vault()
+
+    BoxLayout:
+        size_hint_y: None
+        height: 50
+        Button:
+            text: 'Run Git Commands'
+            on_press: root.run_commands()
+        Button:
+            text: 'Clear Cache'
+            on_press: root.clear_cache()
+
+    ScrollView:
+        Label:
+            id: output
+            text: root.output_text
+            size_hint_y: None
+            height: self.texture_size[1]
+            text_size: self.width, None
+            color: 0, 0, 0, 1
+```
