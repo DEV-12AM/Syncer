@@ -3,3 +3,4 @@ This project is made to sync files between the phone and the PC using git hub re
 
 How does it works:
 1. 
+2.
