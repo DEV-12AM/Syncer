@@ -11,11 +11,13 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.properties import StringProperty
 from kivy.uix.filechooser import FileChooserListView
 from kivy.uix.popup import Popup
+from kivy.uix.button import Button
+from kivy.clock import Clock
 from kivy.logger import Logger
 import time
 
 def load_cached_data():
-    cache_file = "/storage/emulated/0/Download/Syncer/.git_config_cache.json"
+    cache_file = "/storage/emulated/0/Download/Syncer/.cache.json"
     defaults = {"username": "", "email": "", "repo_link": "", "commit_message": "", "local_vault_link": ""}
     try:
         if os.path.exists(cache_file) and os.access(cache_file, os.R_OK):
@@ -25,7 +27,7 @@ def load_cached_data():
                 Logger.error(f"Cache file {cache_file} contains invalid data")
                 return defaults
             defaults.update(data)
-            Logger.info(f"Loaded cache from {cache_file}")
+            Logger.info(f"Loaded cache: {cache_file}")
         else:
             Logger.info(f"Cache file {cache_file} not found or not readable")
         return defaults
@@ -34,12 +36,17 @@ def load_cached_data():
         return defaults
 
 def save_cached_data(data):
-    cache_file = "/storage/emulated/0/Download/Syncer/.git_config_cache.json"
+    cache_file = "/storage/emulated/0/Download/Syncer/.cache.json"
     try:
-        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+        cache_dir = os.path.dirname(cache_file)
+        if not os.path.exists(cache_dir):
+            os.makedirs(cache_dir)
+        if not os.access(cache_dir, os.W_OK):
+            Logger.error(f"No write permissions for {cache_dir}")
+            return False
         with open(cache_file, 'w') as f:
-            json.dump(data, f, indent=2)
-        Logger.info(f"Saved cache to {cache_file}")
+            json.dump(data, f, indent=4)
+        Logger.info(f"Saved cache: {cache_file}")
         return True
     except Exception as e:
         Logger.error(f"Error saving cache: {e}")
@@ -64,7 +71,7 @@ def upload_files_to_github(directory, token, owner, repo, branch="temp-sync"):
     uploaded_files = []
     try:
         if not os.path.isdir(directory):
-            output.append(f"Error: Directory {directory} does not exist")
+            output.append(f"Error: Folder {directory} does not exist")
             return output, uploaded_files
 
         repo_info = requests.get(f"https://api.github.com/repos/{owner}/{repo}", headers=headers)
@@ -87,7 +94,7 @@ def upload_files_to_github(directory, token, owner, repo, branch="temp-sync"):
         if create_branch.status_code != 201:
             output.append(f"Error creating branch: {create_branch.json().get('message', 'Unknown error')} (Status: {create_branch.status_code})")
             return output, uploaded_files
-        output.append(f"Created temporary branch: {branch}")
+        output.append(f"Created branch: {branch}")
 
         for root, _, files in os.walk(directory):
             for file in files:
@@ -136,7 +143,7 @@ def trigger_github_workflow(token, owner, repo, branch, username, email, commit_
             "inputs": {
                 "username": username,
                 "email": email,
-                "commit_message": commit_message or "Auto commit",
+                "commit_message": commit_message or "Auto sync",
                 "default_branch": default_branch
             }
         }
@@ -148,7 +155,7 @@ def trigger_github_workflow(token, owner, repo, branch, username, email, commit_
         if response.status_code != 204:
             output.append(f"Error triggering workflow: {response.json().get('message', 'Unknown error')} (Status: {response.status_code})")
             return output
-        output.append("Triggered GitHub Actions workflow")
+        output.append("Triggered workflow")
 
         for _ in range(12):
             runs = requests.get(
@@ -173,15 +180,15 @@ def trigger_github_workflow(token, owner, repo, branch, username, email, commit_
                         if jobs.status_code == 200:
                             for job in jobs.json().get("jobs", []):
                                 if job["conclusion"] == "failure":
-                                    output.append(f"Workflow failed in job '{job['name']}':")
-                                    output.append(f"See logs: {job['html_url']}")
+                                    output.append(f"Workflow failed: {job['name']}")
+                                    output.append(f"Logs: {job['html_url']}")
                         output.append(f"Workflow failed: {conclusion}")
                     return output
             time.sleep(15)
-        output.append("Workflow status: Timed out")
+        output.append("Workflow timed out")
         return output
     except Exception as e:
-        output.append(f"Unexpected error in workflow: {e}")
+        output.append(f"Workflow error: {e}")
         return output
 
 class GitConfigLayout(BoxLayout):
@@ -189,68 +196,86 @@ class GitConfigLayout(BoxLayout):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.output_text = "*Sync your vault to GitHub!*\n\n" + \
+                          "Steps:\n1. Get a PAT (repo, workflow scopes): github.com/settings/tokens\n" + \
+                          "2. Add .github/workflows/git-sync.yml to github.com/DEV-12AM/Syncer\n" + \
+                          "3. Set default branch (main/master).\n" + \
+                          "4. Fill fields, hit 'Sync Now'.\n\n" + \
+                          "Open source: github.com/DEV-12AM/Syncer\nNo sketchy stuff! <3\n"
+        Clock.schedule_once(self._load_cached_data, 0.1)
+
+    def _load_cached_data(self, dt):
         cached_data = load_cached_data()
-        self.ids.username.text = cached_data["username"]
-        self.ids.email.text = cached_data["email"]
-        self.ids.repo_link.text = cached_data["repo_link"]
-        self.ids.commit_message.text = cached_data["commit_message"]
-        self.ids.local_vault_link.text = cached_data["local_vault_link"]
-        self.output_text = "*Enter your GitHub details to sync.*\n\n" + \
-                          "How to setup:\n1. Create a GitHub PAT with 'repo' and 'workflow' scopes: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens\n" + \
-                          "2. Add .github/workflows/git-sync.yml to https://github.com/DEV-12AM/Syncer\n" + \
-                          "3. Ensure repo has a default branch (main or master).\n" + \
-                          "4. Fill fields and click 'Run Git Commands'.\n\n" + \
-                          "Note:\nOpen source: https://github.com/DEV-12AM/Syncer\n" + \
-                          "No data theft <3\n"
+        try:
+            if 'username' in self.ids:
+                self.ids.username.text = cached_data["username"]
+            if 'email' in self.ids:
+                self.ids.email.text = cached_data["email"]
+            if 'repo_link' in self.ids:
+                self.ids.repo_link.text = cached_data["repo_link"]
+            if 'commit_message' in self.ids:
+                self.ids.commit_message.text = cached_data["commit_message"]
+            if 'local_vault_link' in self.ids:
+                self.ids.local_vault_link.text = cached_data["local_vault_link"]
+            Logger.info("Loaded cached data")
+            self.output_text += "Loaded saved settings.\n"
+        except Exception as e:
+            self.output_text = f"Error loading settings: {e}\n"
+            Logger.error(f"Error loading cached data: {e}")
 
     def select_local_vault(self):
         try:
-            if not os.path.exists('/sdcard/') or not os.access('/sdcard/', os.R_OK):
-                self.output_text = "Error: No storage permissions or /sdcard/ inaccessible. Check app permissions.\n"
-                Logger.error("Storage permissions missing or /sdcard/ inaccessible")
+            base_path = '/sdcard/'
+            if not os.path.exists(base_path) or not os.access(base_path, os.R_OK):
+                self.output_text = "Error: No storage permissions or /sdcard/ inaccessible. Check app settings.\n"
+                Logger.error("Storage permissions missing")
                 return
 
             content = BoxLayout(orientation='vertical')
             self.file_chooser = FileChooserListView(
-                path='/sdcard/',
+                path=base_path,
                 dirselect=True,
                 filters=['*'],
                 size_hint=(1, 0.9)
             )
-            close_button = Button(text='Close', size_hint=(1, 0.1))
+            close_button = Button(
+                text='Close',
+                size_hint=(1, 0.1),
+                background_color=(1, 0.35, 0.35, 1)
+            )
             content.add_widget(self.file_chooser)
             content.add_widget(close_button)
 
             self.popup = Popup(
-                title='Select Vault Directory',
+                title='Choose Vault Folder',
                 content=content,
                 size_hint=(0.9, 0.9)
             )
             self.file_chooser.bind(on_submit=self.set_local_vault)
             close_button.bind(on_press=self.popup.dismiss)
             self.popup.open()
-            Logger.info("Opened file chooser popup")
+            Logger.info("Opened folder picker")
         except Exception as e:
-            self.output_text = f"Error opening file chooser: {e}\n"
-            Logger.error(f"Error opening file chooser: {e}")
+            self.output_text = f"Error opening folder picker: {e}\n"
+            Logger.error(f"Error in select_local_vault: {e}")
 
     def set_local_vault(self, instance, selection, *args):
         try:
             if selection and os.path.isdir(selection[0]):
                 self.ids.local_vault_link.text = selection[0]
-                self.output_text = f"Selected directory: {selection[0]}\n"
-                Logger.info(f"Selected directory: {selection[0]}")
+                self.output_text = f"Selected folder: {selection[0]}\n"
+                Logger.info(f"Selected folder: {selection[0]}")
             else:
-                self.output_text = "Error: Please select a valid directory.\n"
-                Logger.error("Invalid directory selected")
+                self.output_text = "Error: Choose a valid folder.\n"
+                Logger.error("Invalid folder selected")
             self.popup.dismiss()
         except Exception as e:
-            self.output_text = f"Error setting directory: {e}\n"
-            Logger.error(f"Error setting directory: {e}")
+            self.output_text = f"Error setting folder: {e}\n"
+            Logger.error(f"Error in set_local_vault: {e}")
 
     def run_commands(self):
-        Logger.info("Run Git Commands button pressed")
-        self.output_text = "Button pressed, processing...\n\n"
+        Logger.info("Sync Now pressed")
+        self.output_text = "Starting sync...\n\n"
         try:
             username = self.ids.username.text.strip()  # PAT
             email = self.ids.email.text.strip()
@@ -259,29 +284,29 @@ class GitConfigLayout(BoxLayout):
             local_vault_link = self.ids.local_vault_link.text.strip()
 
             if not all([username, email, repo_link, local_vault_link]):
-                self.output_text = "Error: PAT, Email, Repository Link, and Local Vault Link required.\n"
+                self.output_text = "Error: Fill all required fields.\n"
                 return
 
             if not os.path.isdir(local_vault_link):
-                self.output_text = f"Error: Directory {local_vault_link} does not exist.\n"
+                self.output_text = f"Error: Folder {local_vault_link} not found.\n"
                 return
 
             owner, repo = get_repo_info(repo_link)
             if not owner or not repo:
-                self.output_text = "Error: Invalid repository link. Use: https://github.com/owner/repo\n"
+                self.output_text = "Error: Invalid repo URL. Use: https://github.com/owner/repo\n"
                 return
 
-            self.output_text += "Checking local vault files...\n\n"
+            self.output_text += "Checking files...\n\n"
             files = []
             for root, _, fs in os.walk(local_vault_link):
                 for f in fs:
                     files.append(os.path.relpath(os.path.join(root, f), local_vault_link))
             if not files:
-                self.output_text = f"Error: No files found in {local_vault_link}. Add files to sync.\n"
+                self.output_text = f"Error: No files in {local_vault_link}.\n"
                 return
-            self.output_text += f"Found {len(files)} file(s) to upload.\n\n"
+            self.output_text += f"Found {len(files)} file(s).\n\n"
 
-            self.output_text += "Saving cache...\n\n"
+            self.output_text += "Saving settings...\n\n"
             if save_cached_data({
                 "username": username,
                 "email": email,
@@ -289,14 +314,14 @@ class GitConfigLayout(BoxLayout):
                 "commit_message": commit_message,
                 "local_vault_link": local_vault_link
             }):
-                self.output_text += "Cache saved successfully.\n\n"
+                self.output_text += "Settings saved.\n\n"
             else:
-                self.output_text += "Warning: Failed to save cache.\n\n"
+                self.output_text += "Warning: Failed to save settings.\n\n"
 
-            self.output_text += "Uploading files to GitHub...\n\n"
+            self.output_text += "Uploading files...\n\n"
             output, uploaded_files = upload_files_to_github(local_vault_link, username, owner, repo)
             if not uploaded_files:
-                output.append("Error: No files uploaded. Check vault directory.")
+                output.append("Error: No files uploaded. Check folder.")
                 self.output_text = "\n\n".join(output)
                 return
 
@@ -304,30 +329,34 @@ class GitConfigLayout(BoxLayout):
                 self.output_text = "\n\n".join(output)
                 return
 
-            self.output_text += "\n\nTriggering GitHub Actions workflow...\n\n"
+            self.output_text += "\n\nRunning workflow...\n\n"
             output.extend(trigger_github_workflow(username, owner, repo, "temp-sync", username, email, commit_message))
             self.output_text = "\n\n".join(output)
         except Exception as e:
-            self.output_text = f"Error in run_commands: {e}\n"
+            self.output_text = f"Sync error: {e}\n"
             Logger.error(f"run_commands failed: {e}")
 
     def clear_cache(self):
-        cache_file = "/storage/emulated/0/Download/Syncer/.git_config_cache.json"
+        cache_file = "/storage/emulated/0/Download/Syncer/.cache.json"
         if os.path.exists(cache_file):
             try:
                 os.remove(cache_file)
                 self.output_text = "Cache cleared.\n"
-                Logger.info(f"Cache file {cache_file} deleted")
+                Logger.info(f"Cache deleted: {cache_file}")
             except Exception as e:
                 self.output_text = f"Error clearing cache: {e}\n"
                 Logger.error(f"Error clearing cache: {e}")
         else:
-            self.output_text = "Cache file does not exist.\n"
-        self.ids.username.text = ""
-        self.ids.email.text = ""
-        self.ids.repo_link.text = ""
-        self.ids.commit_message.text = ""
-        self.ids.local_vault_link.text = ""
+            self.output_text = "No cache found.\n"
+        try:
+            self.ids.username.text = ""
+            self.ids.email.text = ""
+            self.ids.repo_link.text = ""
+            self.ids.commit_message.text = ""
+            self.ids.local_vault_link.text = ""
+        except Exception as e:
+            self.output_text = f"Error resetting fields: {e}\n"
+            Logger.error(f"Error clearing UI: {e}")
 
 class GitConfigApp(App):
     def build(self):
