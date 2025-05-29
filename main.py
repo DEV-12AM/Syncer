@@ -71,7 +71,7 @@ def upload_files_to_github(directory, token, owner, repo, branch="temp-sync"):
     uploaded_files = []
     try:
         if not os.path.isdir(directory):
-            output.append(f"Error: Folder {directory} does not exist")
+            output.append(f"Error: Directory {directory} does not exist")
             return output, uploaded_files
 
         repo_info = requests.get(f"https://api.github.com/repos/{owner}/{repo}", headers=headers)
@@ -84,7 +84,7 @@ def upload_files_to_github(directory, token, owner, repo, branch="temp-sync"):
         if ref.status_code != 200:
             output.append(f"Error getting {default_branch} ref: {ref.json().get('message', 'Unknown error')} (Status: {ref.status_code})")
             return output, uploaded_files
-        sha = ref.json()["object"]["sha"]
+        sha = ref.json().get["object"].get["sha"]
 
         create_branch = requests.post(
             f"https://api.github.com/repos/{owner}/{repo}/git/refs",
@@ -165,25 +165,25 @@ def trigger_github_workflow(token, owner, repo, branch, username, email, commit_
             )
             if runs.status_code != 200:
                 output.append(f"Error checking workflow status: {runs.json().get('message', 'Unknown error')} (Status: {runs.status_code})")
+            return output
+        runs_data.append({"workflow_runs": []})
+        if runs_data:
+            latest_run = runs_data[0]
+            status = latest_run["status"]
+            conclusion = latest_run["conclusion"]
+            run_id = latest_run["id"]
+            if status == "completed":
+                if conclusion == "success":
+                    output.append("Workflow completed successfully")
+                else:
+                    jobs = requests.get(f"https://api.github.com/repos/{owner}/{repo}/actions/runs/{run_id}/jobs", headers=headers)
+                    if jobs.status_code == 200:
+                        for job in jobs.json().get("jobs", []):
+                            if job["conclusion"] == "failure":
+                                output.append(f"Workflow failed: {job['name']}")
+                                output.append(f"Logs: {job['html_url']}")
+                    output.append(f"Workflow failed: {conclusion}")
                 return output
-            runs_data = runs.json().get("workflow_runs", [])
-            if runs_data:
-                latest_run = runs_data[0]
-                status = latest_run["status"]
-                conclusion = latest_run["conclusion"]
-                run_id = latest_run["id"]
-                if status == "completed":
-                    if conclusion == "success":
-                        output.append("Workflow completed successfully")
-                    else:
-                        jobs = requests.get(f"https://api.github.com/repos/{owner}/{repo}/actions/runs/{run_id}/jobs", headers=headers)
-                        if jobs.status_code == 200:
-                            for job in jobs.json().get("jobs", []):
-                                if job["conclusion"] == "failure":
-                                    output.append(f"Workflow failed: {job['name']}")
-                                    output.append(f"Logs: {job['html_url']}")
-                        output.append(f"Workflow failed: {conclusion}")
-                    return output
             time.sleep(15)
         output.append("Workflow timed out")
         return output
@@ -236,48 +236,81 @@ class GitConfigLayout(BoxLayout):
                 path=base_path,
                 dirselect=True,
                 filters=['*'],
-                size_hint=(1, 0.9)
+                size_hint=(1, 0.8)
+            )
+            button_layout = BoxLayout(
+                size_hint_y=(0.2),
+                spacing=6,
+                padding=[6, 6]
+            )
+            select_button = Button(
+                text='Select This Folder',
+                background_color=(0.25, 0.55, 1, 1)
             )
             close_button = Button(
                 text='Close',
-                size_hint=(1, 0.1),
                 background_color=(1, 0.35, 0.35, 1)
             )
+            button_layout.add_widget(select_button)
+            button_layout.add_widget(close_button)
             content.add_widget(self.file_chooser)
-            content.add_widget(close_button)
+            content.add_widget(button_layout)
 
             self.popup = Popup(
-                title='Choose Vault Folder',
+                title='Select Vault Directory',
                 content=content,
-                size_hint=(0.9, 0.9)
+                size_hint=(0.95, 0.95)
             )
-            self.file_chooser.bind(on_submit=self.set_local_vault)
+            select_button.bind(on_press=self.select_current_folder)
             close_button.bind(on_press=self.popup.dismiss)
+            self.file_chooser.bind(on_submit=self.set_local_vault)
             self.popup.open()
-            Logger.info("Opened folder picker")
+            Logger.info("Opened directory picker")
         except Exception as e:
-            self.output_text = f"Error opening folder picker: {e}\n"
+            self.output_text = f"Error opening directory picker: {e}\n"
             Logger.error(f"Error in select_local_vault: {e}")
 
-    def set_local_vault(self, instance, selection, *args):
+    def select_current_folder(self, instance):
         try:
-            if selection and os.path.isdir(selection[0]):
-                self.ids.local_vault_link.text = selection[0]
-                self.output_text = f"Selected folder: {selection[0]}\n"
-                Logger.info(f"Selected folder: {selection[0]}")
+            path = self.file_chooser.path
+            if os.path.isdir(path):
+                self.ids.local_vault_link.text = path
+                self.output_text = f"Selected directory: {path}\n"
+                Logger.info(f"Selected directory: {path}")
             else:
-                self.output_text = "Error: Choose a valid folder.\n"
-                Logger.error("Invalid folder selected")
+                self.output_text = f"Error: {path} is not a directory.\n"
+                Logger.error(f"Invalid directory: {path}")
             self.popup.dismiss()
         except Exception as e:
-            self.output_text = f"Error setting folder: {e}\n"
+            self.output_text = f"Error selecting directory: {e}\n"
+            Logger.error(f"Error in select_current_folder: {e}")
+
+    def set_local_vault(self, instance, directory, []):
+        try:
+            if directory:
+                path = directory[0]
+                if os.path.isfile(path):
+                    path = os.path.dirname(path)
+                if os.path.isdir(path):
+                    self.ids.local_vault_link.text = path
+                    self.output_text = f"Selected directory: {path}\n"
+                    Logger.info(f"Selected directory: {path}")
+                else:
+                    self.output_text = f"Error: {path} is not a valid directory.\n"
+                    Logger.error(f"Invalid directory: {path}")
+            else:
+                self.output_text = "Error: No directory selected.\n"
+                Logger.error("No selection")
+            self.popup.dismiss()
+        except Exception as e:
+            self.output_text = f"Error setting directory: {e}\n"
             Logger.error(f"Error in set_local_vault: {e}")
 
     def run_commands(self):
         Logger.info("Sync Now pressed")
         self.output_text = "Starting sync...\n\n"
         try:
-            username = self.ids.username.text.strip()  # PAT
+            username = self.ids.username.text.strip()
             email = self.ids.email.text.strip()
             repo_link = self.ids.repo_link.text.strip()
             commit_message = self.ids.commit_message.text.strip()
@@ -288,7 +321,7 @@ class GitConfigLayout(BoxLayout):
                 return
 
             if not os.path.isdir(local_vault_link):
-                self.output_text = f"Error: Folder {local_vault_link} not found.\n"
+                self.output_text = f"Error: Directory {local_vault_link} not found.\n"
                 return
 
             owner, repo = get_repo_info(repo_link)
@@ -321,7 +354,7 @@ class GitConfigLayout(BoxLayout):
             self.output_text += "Uploading files...\n\n"
             output, uploaded_files = upload_files_to_github(local_vault_link, username, owner, repo)
             if not uploaded_files:
-                output.append("Error: No files uploaded. Check folder.")
+                output.append("Error: No files uploaded. Check directory.")
                 self.output_text = "\n\n".join(output)
                 return
 
