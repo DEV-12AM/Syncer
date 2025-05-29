@@ -1,4 +1,3 @@
-```python
 import os
 import subprocess
 import json
@@ -32,9 +31,18 @@ def save_cached_data(data):
     except Exception as e:
         Logger.error(f"Error saving cache: {e}")
 
+def check_git_installed():
+    try:
+        result = subprocess.run(["git", "--version"], check=True, capture_output=True, text=True)
+        return True, result.stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False, "Git is not installed or not found. Install Git via Termux: pkg install git"
+
 def run_git_commands(directory, username, email, repo_link, commit_message):
     output = []
     commit_msg = commit_message.strip() if commit_message.strip() else "Auto commit"
+    # Set PATH to include Termux's Git binary
+    os.environ["PATH"] += ":/data/data/com.termux/files/usr/bin"
     try:
         if not os.path.isdir(directory):
             output.append(f"Error: Directory {directory} does not exist")
@@ -95,43 +103,62 @@ class GitConfigLayout(BoxLayout):
                           "We are NOT stealing any data from you <3"
 
     def select_local_vault(self):
-        self.file_chooser = FileChooserListView()
-        self.file_chooser.bind(on_submit=self.set_local_vault)
-        self.add_widget(self.file_chooser)
+        try:
+            self.file_chooser = FileChooserListView(path='/sdcard/', dirselect=True, filters=['*'])
+            self.file_chooser.bind(on_submit=self.set_local_vault)
+            self.add_widget(self.file_chooser)
+        except Exception as e:
+            self.output_text = f"Error opening file chooser: {e}\n"
 
     def set_local_vault(self, instance, selection, *args):
-        if selection:
+        if selection and os.path.isdir(selection[0]):
             self.ids.local_vault_link.text = selection[0]
-        self.remove_widget(self.file_chooser)
+        else:
+            self.output_text = "Error: Please select a valid directory.\n"
+        if hasattr(self, 'file_chooser'):
+            self.remove_widget(self.file_chooser)
+            del self.file_chooser
 
     def run_commands(self):
-        username = self.ids.username.text.strip()
-        email = self.ids.email.text.strip()
-        repo_link = self.ids.repo_link.text.strip()
-        commit_message = self.ids.commit_message.text.strip()
-        local_vault_link = self.ids.local_vault_link.text.strip()
+        Logger.info("Run Git Commands button pressed")
+        self.output_text = "Button pressed, starting Git commands...\n\n"
+        try:
+            # Check if Git is installed
+            git_installed, git_message = check_git_installed()
+            if not git_installed:
+                self.output_text = f"Error: {git_message}\n"
+                return
 
-        if not all([username, email, repo_link, local_vault_link]):
-            self.output_text = "Error: Username, Email, Repository Link, and Local Vault Link are required.\n"
-            return
+            username = self.ids.username.text.strip()
+            email = self.ids.email.text.strip()
+            repo_link = self.ids.repo_link.text.strip()
+            commit_message = self.ids.commit_message.text.strip()
+            local_vault_link = self.ids.local_vault_link.text.strip()
 
-        if not os.path.isdir(local_vault_link):
-            self.output_text = f"Error: Directory {local_vault_link} does not exist.\n"
-            return
+            if not all([username, email, repo_link, local_vault_link]):
+                self.output_text = "Error: Username, Email, Repository Link, and Local Vault Link are required.\n"
+                return
 
-        save_cached_data({
-            "username": username,
-            "email": email,
-            "repo_link": repo_link,
-            "commit_message": commit_message,
-            "local_vault_link": local_vault_link
-        })
+            if not os.path.isdir(local_vault_link):
+                self.output_text = f"Error: Directory {local_vault_link} does not exist.\n"
+                return
 
-        self.output_text = "Processing...\n\n"
-        output = ["Processing Local Vault..."]
-        output.extend(run_git_commands(local_vault_link, username, email, repo_link, commit_message))
-        output.append("\nAll operations completed.")
-        self.output_text = "\n\n".join(output)
+            save_cached_data({
+                "username": username,
+                "email": email,
+                "repo_link": repo_link,
+                "commit_message": commit_message,
+                "local_vault_link": local_vault_link
+            })
+
+            self.output_text = "Processing...\n\n"
+            output = ["Processing Local Vault..."]
+            output.extend(run_git_commands(local_vault_link, username, email, repo_link, commit_message))
+            output.append("\nAll operations completed.")
+            self.output_text = "\n\n".join(output)
+        except Exception as e:
+            self.output_text = f"Error in run_commands: {e}\n"
+            Logger.error(f"run_commands failed: {e}")
 
     def clear_cache(self):
         cache_file = os.path.expanduser("~/.git_config_cache.json")
@@ -155,4 +182,3 @@ class GitConfigApp(App):
 
 if __name__ == "__main__":
     GitConfigApp().run()
-```
