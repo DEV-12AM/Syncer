@@ -11,6 +11,9 @@ on:
       commit_message:
         description: 'Commit Message'
         required: true
+      default_branch:
+        description: 'Default Branch'
+        required: true
 
 jobs:
   sync:
@@ -20,6 +23,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.branch || 'temp-sync' }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure Git
         run: |
@@ -30,4 +34,4 @@ jobs:
         run: |
           git add .
           git commit -m "${{ github.event.inputs.commit_message }}" || echo "No changes to commit"
-          git push origin master
+          git push origin ${{ github.event.inputs.default_branch }} || echo "Push failed: $?"
