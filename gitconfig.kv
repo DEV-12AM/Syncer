@@ -1,10 +1,12 @@
+
+# gitconfig.kv
 <GitConfigLayout>:
     orientation: 'vertical'
-    padding: 20
     spacing: 10
+    padding: [10, 10]
 
     Label:
-        text: 'GitHub PAT (Token)'
+        text: 'GitHub PAT'
         size_hint_y: None
         height: 40
         font_size: 18
@@ -14,6 +16,7 @@
         size_hint_y: None
         height: 50
         font_size: 16
+        hint_text: 'Enter your GitHub PAT'
 
     Label:
         text: 'Git Email'
@@ -26,6 +29,7 @@
         size_hint_y: None
         height: 50
         font_size: 16
+        hint_text: 'Enter your GitHub email'
 
     Label:
         text: 'Repository Link'
@@ -38,9 +42,10 @@
         size_hint_y: None
         height: 50
         font_size: 16
+        hint_text: 'e.g., https://github.com/owner/repo'
 
     Label:
-        text: 'Commit Message (Optional)'
+        text: 'Commit Message'
         size_hint_y: None
         height: 40
         font_size: 18
@@ -50,27 +55,7 @@
         size_hint_y: None
         height: 50
         font_size: 16
-
-    Label:
-        text: 'Branch Name'
-        size_hint_y: None
-        height: 40
-        font_size: 18
-    BoxLayout:
-        size_hint_y: None
-        height: 50
-        spacing: 10
-        TextInput:
-            id: branch_name
-            multiline: False
-            size_hint_x: 0.8
-            font_size: 16
-            hint_text: 'Leave blank for "main"'
-        Button:
-            text: 'Fetch Branches'
-            size_hint_x: 0.2
-            font_size: 16
-            on_press: root.fetch_branches()
+        hint_text: 'Optional, defaults to "Auto sync"'
 
     Label:
         text: 'Local Vault Link'
@@ -84,10 +69,12 @@
         TextInput:
             id: local_vault_link
             multiline: False
-            size_hint_x: 0.8
+            size_hint_y: None
+            height: 50
             font_size: 16
+            hint_text: 'Select vault folder'
+            readonly: True
         Button:
-            id: select_dir_button
             text: '📁'
             size_hint_x: 0.2
             font_size: 20
@@ -99,53 +86,36 @@
         spacing: 10
         Button:
             text: 'Run Git Commands'
+            size_hint_x: 0.5
             font_size: 16
+            background_color: (0.25, 0.55, 1, 1)
             on_press: root.run_commands()
         Button:
             text: 'Clear Cache'
+            size_hint_x: 0.5
             font_size: 16
+            background_color: (1, 0.35, 0.35, 1)
             on_press: root.clear_cache()
 
-    BoxLayout:
+    Label:
+        text: 'Output'
         size_hint_y: None
-        height: 50
-        spacing: 10
-        Button:
-            text: 'Remote Backup'
-            font_size: 16
-            on_press: root.remote_backup()
-        Button:
-            text: 'Restore Remote'
-            font_size: 16
-            on_press: root.restore_remote()
-
-    BoxLayout:
-        size_hint_y: None
-        height: 50
-        spacing: 10
-        Button:
-            text: 'Local Backup'
-            font_size: 16
-            on_press: root.local_backup()
-        Button:
-            text: 'Local Restore'
-            font_size: 16
-            on_press: root.restore_local()
-
+        height: 40
+        font_size: 18
     ScrollView:
-        size_hint_y: 1
-        minimum_height: 200
-        canvas.before:
-            Color:
-                rgba: 0.9, 0.9, 0.9, 1
-            Rectangle:
-                pos: self.pos
-                size: self.size
+        size_hint: (1, None)
+        height: 150
+        do_scroll_x: False
+        do_scroll_y: True
+        bar_width: 4
+        bar_color: (0.25, 0.55, 1, 1)
+        bar_inactive_color: (0.8, 0.8, 0.85, 1)
         Label:
-            id: output
+            id: output_label
             text: root.output_text
             size_hint_y: None
             height: self.texture_size[1]
             text_size: self.width, None
-            color: 0, 0, 0, 1
             font_size: 14
+            color: (0, 0, 0, 1)
+            padding: [5, 5]
