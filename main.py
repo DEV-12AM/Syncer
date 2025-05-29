@@ -546,54 +546,7 @@ class GitConfigLayout(BoxLayout):
             bar_inactive_color=(0.8, 0.8, 0.85, 1)
         )
         self.parent_scroll.add_widget(self)
-        self.add_branch_ui()
         Clock.schedule_once(self._load_cached_data, 0.1)
-
-    def add_branch_ui(self):
-        branch_layout = BoxLayout(size_hint_y=None, height=50, spacing=10)
-        branch_label = Label(
-            text="Branch Name",
-            size_hint_y=None,
-            height=40,
-            font_size=18
-        )
-        self.branch_input = TextInput(
-            multiline=False,
-            size_hint_y=None,
-            height=50,
-            font_size=16,
-            hint_text="Leave blank for 'main'"
-        )
-        self.branch_input.bind(text=self.on_branch_input)
-        fetch_button = Button(
-            text="Fetch Branches",
-            size_hint_x=0.3,
-            font_size=16,
-            on_press=self.fetch_branches
-        )
-        remote_backup_button = Button(
-            text="Remote Backup",
-            size_hint_x=0.3,
-            font_size=16,
-            on_press=self.remote_backup
-        )
-        restore_remote_button = Button(
-            text="Restore Remote",
-            size_hint_x=0.3,
-            font_size=16,
-            on_press=self.restore_remote
-        )
-        branch_layout.add_widget(self.branch_input)
-        branch_layout.add_widget(fetch_button)
-        self.add_widget(branch_label, index=8)
-        self.add_widget(branch_layout, index=8)
-        self.add_widget(remote_backup_button, index=2)
-        self.add_widget(restore_remote_button, index=2)
-
-    def on_branch_input(self, instance, value):
-        if not hasattr(self, 'ids'):
-            self.ids = {}
-        self.ids['branch_name'] = instance
 
     def _load_cached_data(self, dt):
         cached_data = load_cached_data()
@@ -603,7 +556,7 @@ class GitConfigLayout(BoxLayout):
             self.ids.repo_link.text = cached_data["repo_link"]
             self.ids.commit_message.text = cached_data["commit_message"]
             self.ids.local_vault_link.text = cached_data["local_vault"]
-            self.branch_input.text = cached_data["branch_name"]
+            self.ids.branch_name.text = cached_data["branch_name"]
             self.output_text += "Loaded saved settings.\n"
             Logger.info("Loaded cached data")
         except Exception as e:
@@ -744,7 +697,7 @@ class GitConfigLayout(BoxLayout):
             repo_link = self.ids.repo_link.text.strip()
             commit_message = self.ids.commit_message.text.strip()
             local_vault = self.ids.local_vault_link.text.strip()
-            branch_name = self.branch_input.text.strip() or "main"
+            branch_name = self.ids.branch_name.text.strip() or "main"
 
             if not all([token, email, repo_link, local_vault]):
                 self.output_text = "Error: Fill all required fields.\n"
@@ -815,7 +768,7 @@ class GitConfigLayout(BoxLayout):
             self.ids.repo_link.text = ""
             self.ids.commit_message.text = ""
             self.ids.local_vault_link.text = ""
-            self.branch_input.text = ""
+            self.ids.branch_name.text = ""
         except Exception as e:
             self.output_text = f"Error resetting fields: {e}\n"
 
@@ -827,4 +780,3 @@ class GitConfigApp(App):
 
 if __name__ == "__main__":
     GitConfigApp().run()
-
