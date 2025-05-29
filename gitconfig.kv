@@ -1,61 +1,87 @@
-<GitConfigLayout>:
+<GithubConfigLayout@BoxLayout>:
     orientation: 'vertical'
+    size_hint_y: None
+    height: self.minimum_height
     padding: 20
-    spacing: 10
+    spacing: 15
+    canvas.before:
+        Color:
+            rgba: 1, 1, 1, 1  # White background for layout
+        Rectangle:
+            pos: self.pos
+            size: self.size
 
     Label:
         text: 'GitHub PAT (Token)'
         size_hint_y: None
         height: 40
         font_size: 18
+        color: 0, 0, 0, 1
+
     TextInput:
         id: username
         multiline: False
         size_hint_y: None
         height: 50
         font_size: 16
+        background_color: 0.95, 0.95, 0.95, 1
+        foreground_color: 0, 0, 0, 1
 
     Label:
         text: 'Git Email'
         size_hint_y: None
         height: 40
         font_size: 18
+        color: 0, 0, 0, 1
+
     TextInput:
         id: email
         multiline: False
         size_hint_y: None
         height: 50
         font_size: 16
+        background_color: 0.95, 0.95, 0.95, 1
+        foreground_color: 0, 0, 0, 1
 
     Label:
         text: 'Repository Link'
         size_hint_y: None
         height: 40
         font_size: 18
+        color: 0, 0, 0, 1
+
     TextInput:
         id: repo_link
         multiline: False
         size_hint_y: None
         height: 50
         font_size: 16
+        background_color: 0.95, 0.95, 0.95, 1
+        foreground_color: 0, 0, 0, 1
 
     Label:
         text: 'Commit Message (Optional)'
         size_hint_y: None
         height: 40
         font_size: 18
+        color: 0, 0, 0, 1
+
     TextInput:
         id: commit_message
         multiline: False
         size_hint_y: None
         height: 50
         font_size: 16
+        background_color: 0.95, 0.95, 0.95, 1
+        foreground_color: 0, 0, 0, 1
 
     Label:
         text: 'Local Vault Link'
         size_hint_y: None
         height: 40
         font_size: 18
+        color: 0, 0, 0, 1
+
     BoxLayout:
         size_hint_y: None
         height: 50
@@ -65,13 +91,15 @@
             multiline: False
             size_hint_x: 0.75
             font_size: 16
+            background_color: 0.95, 0.95, 0.95, 1
+            foreground_color: 0, 0, 0, 1
             readonly: True  # Prevent manual edits
         Button:
             id: select_dir_button
             text: '📁'
             size_hint_x: 0.25
             font_size: 24
-            background_color: 0.2, 0.6, 1, 1  # Blue for visibility
+            background_color: 0.2, 0.6, 1, 1
             on_press: root.select_local_vault()
 
     BoxLayout:
@@ -81,13 +109,15 @@
         Button:
             text: 'Run Git Commands'
             font_size: 16
-            background_color: 0.1, 0.7, 0.1, 1  # Green
+            background_color: 0.1, 0.7, 0.1, 1
             on_press: root.run_commands()
+            size_hint_x: 0.5
         Button:
             text: 'Clear Cache'
             font_size: 16
-            background_color: 1, 0.2, 0.2, 1  # Red
+            background_color: 1, 0.2, 0.2, 1
             on_press: root.clear_cache()
+            size_hint_x: 0.5
 
     ScrollView:
         size_hint_y: None
@@ -106,3 +136,13 @@
             text_size: self.width, None
             color: 0, 0, 0, 1
             font_size: 14
+
+# Root widget wrapping the GitConfigLayout to enable scrolling on smaller screens
+ScrollView:
+    do_scroll_x: False
+    do_scroll_y: True
+
+    GithubConfigLayout:
+        size_hint_y: None
+        height: self.minimum_height
+
