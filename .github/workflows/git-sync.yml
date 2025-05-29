@@ -3,16 +3,16 @@ on:
   workflow_dispatch:
     inputs:
       username:
-        description: 'Git Username'
+        description: 'DEV-12AM'
         required: true
       email:
-        description: 'Git Email'
+        description: 'dev.adbelsalam@gmail.com'
         required: true
       commit_message:
-        description: 'Commit Message'
+        description: 'Workflow'
         required: true
       default_branch:
-        description: 'Default Branch'
+        description: 'main'
         required: true
 
 jobs:
