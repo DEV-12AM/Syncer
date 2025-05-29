@@ -10,6 +10,7 @@ from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.properties import StringProperty
 from kivy.uix.filechooser import FileChooserListView
+from kivy.uix.popup import Popup
 from kivy.logger import Logger
 import time
 
@@ -204,20 +205,48 @@ class GitConfigLayout(BoxLayout):
 
     def select_local_vault(self):
         try:
-            self.file_chooser = FileChooserListView(path='/sdcard/', dirselect=True, filters=['*'])
+            if not os.path.exists('/sdcard/') or not os.access('/sdcard/', os.R_OK):
+                self.output_text = "Error: No storage permissions or /sdcard/ inaccessible. Check app permissions.\n"
+                Logger.error("Storage permissions missing or /sdcard/ inaccessible")
+                return
+
+            content = BoxLayout(orientation='vertical')
+            self.file_chooser = FileChooserListView(
+                path='/sdcard/',
+                dirselect=True,
+                filters=['*'],
+                size_hint=(1, 0.9)
+            )
+            close_button = Button(text='Close', size_hint=(1, 0.1))
+            content.add_widget(self.file_chooser)
+            content.add_widget(close_button)
+
+            self.popup = Popup(
+                title='Select Vault Directory',
+                content=content,
+                size_hint=(0.9, 0.9)
+            )
             self.file_chooser.bind(on_submit=self.set_local_vault)
-            self.add_widget(self.file_chooser)
+            close_button.bind(on_press=self.popup.dismiss)
+            self.popup.open()
+            Logger.info("Opened file chooser popup")
         except Exception as e:
             self.output_text = f"Error opening file chooser: {e}\n"
+            Logger.error(f"Error opening file chooser: {e}")
 
     def set_local_vault(self, instance, selection, *args):
-        if selection and os.path.isdir(selection[0]):
-            self.ids.local_vault_link.text = selection[0]
-        else:
-            self.output_text = "Error: Please select a valid directory.\n"
-        if hasattr(self, 'file_chooser'):
-            self.remove_widget(self.file_chooser)
-            del self.file_chooser
+        try:
+            if selection and os.path.isdir(selection[0]):
+                self.ids.local_vault_link.text = selection[0]
+                self.output_text = f"Selected directory: {selection[0]}\n"
+                Logger.info(f"Selected directory: {selection[0]}")
+            else:
+                self.output_text = "Error: Please select a valid directory.\n"
+                Logger.error("Invalid directory selected")
+            self.popup.dismiss()
+        except Exception as e:
+            self.output_text = f"Error setting directory: {e}\n"
+            Logger.error(f"Error setting directory: {e}")
 
     def run_commands(self):
         Logger.info("Run Git Commands button pressed")
