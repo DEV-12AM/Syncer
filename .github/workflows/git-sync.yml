@@ -30,8 +30,23 @@ jobs:
           git config user.name "${{ github.event.inputs.username }}"
           git config user.email "${{ github.event.inputs.email }}"
 
-      - name: Commit and Push
+      - name: Commit changes
         run: |
           git add .
-          git commit -m "${{ github.event.inputs.commit_message }}" || echo "No changes to commit"
-          git push origin ${{ github.event.inputs.default_branch }} || echo "Push failed: $?"
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "${{ github.event.inputs.commit_message }}"
+
+      - name: Push to default branch
+        run: |
+          git push origin ${{ github.event.inputs.default_branch }} || {
+            echo "Push failed: $?"
+            git fetch origin
+            git merge origin/${{ github.event.inputs.default_branch }} --no-edit || {
+              echo "Merge conflict detected"
+              exit 1
+            }
+            git push origin ${{ github.event.inputs.default_branch }}
+          }
