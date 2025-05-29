@@ -52,6 +52,27 @@
         font_size: 16
 
     Label:
+        text: 'Branch Name'
+        size_hint_y: None
+        height: 40
+        font_size: 18
+    BoxLayout:
+        size_hint_y: None
+        height: 50
+        spacing: 10
+        TextInput:
+            id: branch_name
+            multiline: False
+            size_hint_x: 0.8
+            font_size: 16
+            hint_text: 'Leave blank for "main"'
+        Button:
+            text: 'Fetch Branches'
+            size_hint_x: 0.2
+            font_size: 16
+            on_press: root.fetch_branches()
+
+    Label:
         text: 'Local Vault Link'
         size_hint_y: None
         height: 40
@@ -66,6 +87,7 @@
             size_hint_x: 0.8
             font_size: 16
         Button:
+            id: select_dir_button
             text: '📁'
             size_hint_x: 0.2
             font_size: 20
@@ -83,6 +105,32 @@
             text: 'Clear Cache'
             font_size: 16
             on_press: root.clear_cache()
+
+    BoxLayout:
+        size_hint_y: None
+        height: 50
+        spacing: 10
+        Button:
+            text: 'Remote Backup'
+            font_size: 16
+            on_press: root.remote_backup()
+        Button:
+            text: 'Restore Remote'
+            font_size: 16
+            on_press: root.restore_remote()
+
+    BoxLayout:
+        size_hint_y: None
+        height: 50
+        spacing: 10
+        Button:
+            text: 'Local Backup'
+            font_size: 16
+            on_press: root.local_backup()
+        Button:
+            text: 'Local Restore'
+            font_size: 16
+            on_press: root.restore_local()
 
     ScrollView:
         size_hint_y: 1

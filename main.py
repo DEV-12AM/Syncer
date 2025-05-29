@@ -18,7 +18,6 @@ from kivy.uix.filechooser import FileChooserListView
 from kivy.uix.popup import Popup
 from kivy.uix.button import Button
 from kivy.uix.label import Label
-from kivy.uix.textinput import TextInput
 from kivy.clock import Clock
 from kivy.logger import Logger
 import time
@@ -27,10 +26,13 @@ import time
 BASE_DIR = "/storage/emulated/0/Download/Syncer"
 CACHE_FILE = os.path.join(BASE_DIR, ".cache.json")
 TEMP_BACKUP = os.path.join(BASE_DIR, "backup.zip")
+LOCAL_BACKUP_DIR = os.path.join(BASE_DIR, "backups")
 
 def ensure_directories():
     if not os.path.exists(BASE_DIR):
         os.makedirs(BASE_DIR)
+    if not os.path.exists(LOCAL_BACKUP_DIR):
+        os.makedirs(LOCAL_BACKUP_DIR)
 
 def load_cached_data():
     defaults = {"username": "", "email": "", "repo_link": "", "commit_message": "", "local_vault": "", "branch_name": ""}
@@ -115,6 +117,44 @@ def create_zip(vault_path, zip_path):
     except Exception as e:
         return f"Zip creation failed: {e}"
 
+def local_backup_vault(vault_path):
+    output = []
+    try:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = os.path.join(LOCAL_BACKUP_DIR, f"backup_{timestamp}.zip")
+        zip_result = create_zip(vault_path, backup_path)
+        if "Error" in zip_result:
+            return [zip_result]
+        output.append(zip_result)
+        return output
+    except Exception as e:
+        output.append(f"Local backup error: {e}")
+        return output
+
+def restore_local_vault(vault_path):
+    output = []
+    try:
+        if not os.path.exists(LOCAL_BACKUP_DIR):
+            output.append(f"Error: No local backups found in {LOCAL_BACKUP_DIR}")
+            return output
+        backups = [f for f in os.listdir(LOCAL_BACKUP_DIR) if f.startswith("backup_") and f.endswith(".zip")]
+        if not backups:
+            output.append(f"Error: No local backups found in {LOCAL_BACKUP_DIR}")
+            return output
+        latest_backup = max(backups, key=lambda x: os.path.getctime(os.path.join(LOCAL_BACKUP_DIR, x)))
+        backup_path = os.path.join(LOCAL_BACKUP_DIR, latest_backup)
+
+        if os.path.exists(vault_path):
+            shutil.rmtree(vault_path)
+        os.makedirs(vault_path)
+        with zipfile.ZipFile(backup_path, 'r') as zf:
+            zf.extractall(vault_path)
+        output.append(f"Restored vault from {latest_backup}")
+        return output
+    except Exception as e:
+        output.append(f"Local restore error: {e}")
+        return output
+
 def remote_backup_vault(vault_path, token, owner, repo, default_branch):
     headers = {
         "Authorization": f"Bearer {token}",
@@ -189,7 +229,7 @@ def remote_backup_vault(vault_path, token, owner, repo, default_branch):
         if upload.status_code not in (200, 201):
             output.append(f"Error uploading backup: {upload.json().get('message', 'Unknown error')}")
             return output
-        output.append("Uploaded remote backup")
+        output.append(f"Uploaded backup_{timestamp}.zip")
         os.remove(TEMP_BACKUP)
         return output
     except requests.RequestException as e:
@@ -380,62 +420,8 @@ class GitConfigLayout(BoxLayout):
                           "2. Add .github/workflows/git-sync.yml to github.com/DEV-12AM/Syncer\n" + \
                           "3. Set default branch (main/master).\n" + \
                           "4. Fill fields, hit 'Run Git Commands'.\n\n" + \
-                          "Open source: github.com/DEV-12AM/Syncer\nNo sketchy stuff! <3\n"
-        # Add top-level ScrollView since KV is locked
-        self.parent_scroll = ScrollView(
-            size_hint=(1, 1),
-            pos=(0, 0),
-            do_scroll_x=False,
-            do_scroll_y=True,
-            bar_width=4,
-            bar_color=(0.25, 0.55, 1, 1),
-            bar_inactive_color=(0.8, 0.8, 0.85, 1)
-        )
-        self.parent_scroll.add_widget(self)
-        # Add branch and backup UI
-        self.add_branch_ui()
+                          "Open source: github.com/DEV-12AM/Syncer\nNo sketchy stuff!\n"
         Clock.schedule_once(self._load_cached_data, 0.1)
-
-    def add_branch_ui(self):
-        branch_layout = BoxLayout(size_hint_y=None, height=50, spacing=10)
-        branch_label = Label(
-            text="Branch Name",
-            size_hint_y=None,
-            height=40,
-            font_size=18
-        )
-        self.branch_input = TextInput(
-            id="branch_name",
-            multiline=False,
-            size_hint_y=None,
-            height=50,
-            font_size=16,
-            hint_text="Leave blank for 'main'"
-        )
-        fetch_button = Button(
-            text="Fetch Branches",
-            size_hint_x=0.3,
-            font_size=16,
-            on_press=self.fetch_branches
-        )
-        remote_backup_button = Button(
-            text="Remote Backup",
-            size_hint_x=0.3,
-            font_size=16,
-            on_press=self.remote_backup
-        )
-        restore_remote_button = Button(
-            text="Restore Remote",
-            size_hint_x=0.3,
-            font_size=16,
-            on_press=self.restore_remote
-        )
-        branch_layout.add_widget(self.branch_input)
-        branch_layout.add_widget(fetch_button)
-        self.add_widget(branch_label, index=8)  # After commit message
-        self.add_widget(branch_layout, index=8)
-        self.add_widget(remote_backup_button, index=2)  # Before output ScrollView
-        self.add_widget(restore_remote_button, index=2)
 
     def _load_cached_data(self, dt):
         cached_data = load_cached_data()
@@ -445,14 +431,14 @@ class GitConfigLayout(BoxLayout):
             self.ids.repo_link.text = cached_data["repo_link"]
             self.ids.commit_message.text = cached_data["commit_message"]
             self.ids.local_vault_link.text = cached_data["local_vault"]
-            self.branch_input.text = cached_data["branch_name"]
+            self.ids.branch_name.text = cached_data["branch_name"]
             self.output_text += "Loaded saved settings.\n"
             Logger.info("Loaded cached data")
         except Exception as e:
             self.output_text = f"Error loading settings: {e}\n"
             Logger.error(f"Error loading cached data: {e}")
 
-    def fetch_branches(self, instance):
+    def fetch_branches(self):
         try:
             token = self.ids.username.text.strip()
             repo_link = self.ids.repo_link.text.strip()
@@ -470,7 +456,7 @@ class GitConfigLayout(BoxLayout):
         except Exception as e:
             self.output_text = f"Error fetching branches: {e}\n"
 
-    def remote_backup(self, instance):
+    def remote_backup(self):
         try:
             vault_path = self.ids.local_vault_link.text.strip()
             token = self.ids.username.text.strip()
@@ -486,7 +472,7 @@ class GitConfigLayout(BoxLayout):
         except Exception as e:
             self.output_text = f"Remote backup error: {e}\n"
 
-    def restore_remote(self, instance):
+    def restore_remote(self):
         try:
             vault_path = self.ids.local_vault_link.text.strip()
             token = self.ids.username.text.strip()
@@ -502,13 +488,34 @@ class GitConfigLayout(BoxLayout):
         except Exception as e:
             self.output_text = f"Restore remote error: {e}\n"
 
-    def select_local_vault(self, instance=None):
+    def local_backup(self):
         try:
-            # Try multiple storage paths
+            vault_path = self.ids.local_vault_link.text.strip()
+            if not vault_path:
+                self.output_text = "Error: Vault path required.\n"
+                return
+            output = local_backup_vault(vault_path)
+            self.output_text = "\n".join(output) + "\n"
+        except Exception as e:
+            self.output_text = f"Local backup error: {e}\n"
+
+    def restore_local(self):
+        try:
+            vault_path = self.ids.local_vault_link.text.strip()
+            if not vault_path:
+                self.output_text = "Error: Vault path required.\n"
+                return
+            output = restore_local_vault(vault_path)
+            self.output_text = "\n".join(output) + "\n"
+        except Exception as e:
+            self.output_text = f"Local restore error: {e}\n"
+
+    def select_local_vault(self):
+        try:
             base_paths = ["/sdcard/", "/storage/emulated/0/"]
             base_path = None
             for path in base_paths:
-                if os.path.exists(path) and os.access(path, os.R_OK):
+                if os.path.isdir(path) and os.access(path, os.R_OK):
                     base_path = path
                     break
             if not base_path:
@@ -520,12 +527,12 @@ class GitConfigLayout(BoxLayout):
             self.file_chooser = FileChooserListView(
                 path=base_path,
                 dirselect=True,
-                filters=['*'],
+                filters=['.*'],
                 size_hint=(1, 0.8)
             )
-            button_layout = BoxLayout(size_hint=(1, 0.2), spacing=10, padding=[10, 10])
-            select_button = Button(text='Select This Folder', background_color=(0.25, 0.55, 1, 1))
-            close_button = Button(text='Close', background_color=(1, 0.35, 0.35, 1))
+            button_layout = BoxLayout(size_hint=(1, None), height=50, padding=[10, 10], spacing=10)
+            select_button = Button(text='Select Folder', background_color=(0.2, 0.5, 1, 1))
+            close_button = Button(text='Close', background_color=(1, 0.3, 0.3, 1))
             button_layout.add_widget(select_button)
             button_layout.add_widget(close_button)
             content.add_widget(self.file_chooser)
@@ -559,9 +566,8 @@ class GitConfigLayout(BoxLayout):
             self.output_text = f"Error selecting folder: {e}\n"
             Logger.error(f"Error in select_current_folder: {e}")
 
-    def set_local_vault(self, instance, _):
+    def set_local_vault(self, instance, selection, *args):
         try:
-            selection = self.file_chooser.selection
             if selection:
                 path = selection[0]
                 if os.path.isfile(path):
@@ -589,7 +595,7 @@ class GitConfigLayout(BoxLayout):
             repo_link = self.ids.repo_link.text.strip()
             commit_message = self.ids.commit_message.text.strip()
             local_vault = self.ids.local_vault_link.text.strip()
-            branch_name = self.branch_input.text.strip() or "main"
+            branch_name = self.ids.branch_name.text.strip() or "main"
 
             if not all([token, email, repo_link, local_vault]):
                 self.output_text = "Error: Fill all required fields.\n"
@@ -657,15 +663,14 @@ class GitConfigLayout(BoxLayout):
             self.ids.repo_link.text = ""
             self.ids.commit_message.text = ""
             self.ids.local_vault_link.text = ""
-            self.branch_input.text = ""
+            self.ids.branch_name.text = ""
         except Exception as e:
             self.output_text = f"Error resetting fields: {e}\n"
 
 class GitConfigApp(App):
     def build(self):
         ensure_directories()
-        layout = GitConfigLayout()
-        return layout.parent_scroll
+        return GitConfigLayout()
 
 if __name__ == "__main__":
     GitConfigApp().run()
