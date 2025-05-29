@@ -1,145 +1,183 @@
+#:kivy 2.3.1
+#:import Clock kivy.clock.Clock
+
 <GitConfigLayout>:
     orientation: 'vertical'
     size_hint_y: None
     height: self.minimum_height
-    padding: 20
-    spacing: 15
+    padding: [15, 15, 15, 10]
+    spacing: 10
     canvas.before:
         Color:
-            rgba: 1, 1, 1, 1  # White background
+            rgba: 0.96, 0.97, 1, 1
         Rectangle:
             pos: self.pos
             size: self.size
 
     Label:
-        text: 'GitHub PAT (Token)'
+        text: 'GitHub Token'
         size_hint_y: None
-        height: 40
+        height: 34
         font_size: 18
-        color: 0, 0, 0, 1
+        color: 0.15, 0.15, 0.2, 1
+        bold: True
 
     TextInput:
         id: username
         multiline: False
         size_hint_y: None
-        height: 50
+        height: 46
         font_size: 16
-        background_color: 0.95, 0.95, 0.95, 1
+        background_color: 0.9, 0.92, 0.96, 1
         foreground_color: 0, 0, 0, 1
+        padding: [10, 10]
+        cursor_color: 0.25, 0.55, 1, 1
 
     Label:
-        text: 'Git Email'
+        text: 'Email'
         size_hint_y: None
-        height: 40
+        height: 34
         font_size: 18
-        color: 0, 0, 0, 1
+        color: 0.15, 0.15, 0.2, 1
+        bold: True
 
     TextInput:
         id: email
         multiline: False
         size_hint_y: None
-        height: 50
+        height: 46
         font_size: 16
-        background_color: 0.95, 0.95, 0.95, 1
+        background_color: 0.9, 0.92, 0.96, 1
         foreground_color: 0, 0, 0, 1
+        padding: [10, 10]
 
     Label:
-        text: 'Repository Link'
+        text: 'Repo URL'
         size_hint_y: None
-        height: 40
+        height: 34
         font_size: 18
-        color: 0, 0, 0, 1
+        color: 0.15, 0.15, 0.2, 1
+        bold: True
 
     TextInput:
         id: repo_link
         multiline: False
         size_hint_y: None
-        height: 50
+        height: 46
         font_size: 16
-        background_color: 0.95, 0.95, 0.95, 1
+        background_color: 0.9, 0.92, 0.96, 1
         foreground_color: 0, 0, 0, 1
+        padding: [10, 10]
 
     Label:
-        text: 'Commit Message (Optional)'
+        text: 'Commit Message'
         size_hint_y: None
-        height: 40
+        height: 34
         font_size: 18
-        color: 0, 0, 0, 1
+        color: 0.15, 0.15, 0.2, 1
+        bold: True
 
     TextInput:
         id: commit_message
         multiline: False
         size_hint_y: None
-        height: 50
+        height: 46
         font_size: 16
-        background_color: 0.95, 0.95, 0.95, 1
+        background_color: 0.9, 0.92, 0.96, 1
         foreground_color: 0, 0, 0, 1
+        padding: [10, 10]
 
     Label:
-        text: 'Local Vault Link'
+        text: 'Vault Folder'
         size_hint_y: None
-        height: 40
+        height: 34
         font_size: 18
-        color: 0, 0, 0, 1
+        color: 0.15, 0.15, 0.2, 1
+        bold: True
 
     BoxLayout:
         size_hint_y: None
-        height: 50
-        spacing: 10
+        height: 46
+        spacing: 8
         TextInput:
             id: local_vault_link
             multiline: False
-            size_hint_x: 0.75
+            size_hint_x: 0.7
             font_size: 16
-            background_color: 0.95, 0.95, 0.95, 1
+            background_color: 0.9, 0.92, 0.96, 1
             foreground_color: 0, 0, 0, 1
             readonly: True
+            padding: [10, 10]
         Button:
             id: select_dir_button
             text: '📁'
-            size_hint_x: 0.25
-            font_size: 24
-            background_color: 0.2, 0.6, 1, 1
+            size_hint_x: 0.3
+            font_size: 22
+            background_color: 0, 0, 0, 0
+            canvas.before:
+                Color:
+                    rgba: 0.25, 0.55, 1, 1
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [6]
             on_press: root.select_local_vault()
 
     BoxLayout:
         size_hint_y: None
-        height: 50
-        spacing: 10
+        height: 46
+        spacing: 8
         Button:
-            text: 'Run Git Commands'
+            text: 'Sync Now'
             font_size: 16
-            background_color: 0.1, 0.7, 0.1, 1
+            background_color: 0, 0, 0, 0
+            canvas.before:
+                Color:
+                    rgba: 0.15, 0.65, 0.35, 1
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [6]
             on_press: root.run_commands()
-            size_hint_x: 0.5
         Button:
-            text: 'Clear Cache'
+            text: 'Reset Cache'
             font_size: 16
-            background_color: 1, 0.2, 0.2, 1
+            background_color: 0, 0, 0, 0
+            canvas.before:
+                Color:
+                    rgba: 1, 0.35, 0.35, 1
+                RoundedRectangle:
+                    pos: self.pos
+                    size: self.size
+                    radius: [6]
             on_press: root.clear_cache()
-            size_hint_x: 0.5
 
     ScrollView:
         size_hint_y: None
         height: 200
         canvas.before:
             Color:
-                rgba: 0.9, 0.9, 0.9, 1
-            Rectangle:
+                rgba: 0.94, 0.95, 0.99, 1
+            RoundedRectangle:
                 pos: self.pos
                 size: self.size
+                radius: [6]
         Label:
             id: output
             text: root.output_text
             size_hint_y: None
             height: self.texture_size[1]
-            text_size: self.width, None
-            color: 0, 0, 0, 1
+            text_size: self.width - 16, None
+            color: 0.15, 0.15, 0.2, 1
             font_size: 14
+            padding: [8, 8]
 
 ScrollView:
     do_scroll_x: False
     do_scroll_y: True
+    bar_width: 6
+    bar_color: 0.25, 0.55, 1, 1
+    bar_inactive_color: 0.8, 0.8, 0.85, 1
     GitConfigLayout:
         size_hint_y: None
         height: self.minimum_height
