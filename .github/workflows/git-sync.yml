@@ -39,14 +39,24 @@ jobs:
           fi
           git commit -m "${{ github.event.inputs.commit_message }}"
 
-      - name: Push to default branch
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "Merge changes from temp-sync"
+          title: "Sync changes from mobile app"
+          body: "Automated sync from Syncer app"
+          branch: temp-sync
+          base: ${{ github.event.inputs.default_branch }}
+
+      - name: Merge Pull Request
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git push origin ${{ github.event.inputs.default_branch }} || {
-            echo "Push failed: $?"
-            git fetch origin
-            git merge origin/${{ github.event.inputs.default_branch }} --no-edit || {
-              echo "Merge conflict detected"
-              exit 1
-            }
-            git push origin ${{ github.event.inputs.default_branch }}
-          }
+          PR_NUMBER=$(gh pr list --head temp-sync --base ${{ github.event.inputs.default_branch }} --json number -q '.[0].number')
+          if [ -n "$PR_NUMBER" ]; then
+            gh pr merge $PR_NUMBER --merge --delete-branch
+            echo "Merged PR #$PR_NUMBER and deleted temp-sync"
+          else
+            echo "No PR found to merge"
+          fi
