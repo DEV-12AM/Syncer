@@ -1,84 +1,223 @@
-```plaintext
-<GitConfigLayout>:
-    orientation: 'vertical'
-    padding: 10
-    spacing: 10
+import os
+import subprocess
+import json
+import shutil
+from kivy.app import App
+from kivy.uix.boxlayout import BoxLayout
+from kivy.properties import StringProperty
+from kivy.uix.filechooser import FileChooserListView
+from kivy.logger import Logger
 
-    BoxLayout:
-        size_hint_y: None
-        height: 50
-        Label:
-            text: 'Git Username'
-            size_hint_x: 0.3
-        TextInput:
-            id: username
-            multiline: False
-            size_hint_x: 0.7
+def load_cached_data():
+    cache_file = os.path.expanduser("~/.git_config_cache.json")
+    defaults = {"username": "", "email": "", "repo_link": "", "commit_message": "", "local_vault_link": ""}
+    try:
+        if os.path.exists(cache_file):
+            with open(cache_file, 'r') as f:
+                data = json.load(f)
+                if not isinstance(data, dict):
+                    Logger.error(f"Cache file {cache_file} contains invalid data")
+                    return defaults
+                defaults.update(data)
+        return defaults
+    except Exception as e:
+        Logger.error(f"Error loading cache: {e}")
+        return defaults
 
-    BoxLayout:
-        size_hint_y: None
-        height: 50
-        Label:
-            text: 'Git Email'
-            size_hint_x: 0.3
-        TextInput:
-            id: email
-            multiline: False
-            size_hint_x: 0.7
+def save_cached_data(data):
+    cache_file = os.path.expanduser("~/.git_config_cache.json")
+    try:
+        with open(cache_file, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        Logger.error(f"Error saving cache: {e}")
 
-    BoxLayout:
-        size_hint_y: None
-        height: 50
-        Label:
-            text: 'Repository Link'
-            size_hint_x: 0.3
-        TextInput:
-            id: repo_link
-            multiline: False
-            size_hint_x: 0.7
+def check_git_installed():
+    possible_paths = [
+        "/data/data/com.termux/files/usr/bin/git",
+        "/usr/bin/git",
+        "/bin/git",
+        shutil.which("git")
+    ]
+    for git_path in possible_paths:
+        if git_path and os.path.exists(git_path) and os.access(git_path, os.X_OK):
+            try:
+                result = subprocess.run([git_path, "--version"], check=True, capture_output=True, text=True)
+                return True, result.stdout.strip(), git_path
+            except subprocess.CalledProcessError as e:
+                return False, f"Git found at {git_path} but failed: {e.stderr}", git_path
+            except Exception as e:
+                return False, f"Git found at {git_path} but error: {e}", git_path
+    return False, "Git not found. Open Termux and run: pkg install git", None
 
-    BoxLayout:
-        size_hint_y: None
-        height: 50
-        Label:
-            text: 'Commit Message (Optional)'
-            size_hint_x: 0.3
-        TextInput:
-            id: commit_message
-            multiline: False
-            size_hint_x: 0.7
+def run_git_commands(directory, username, email, repo_link, commit_message):
+    output = []
+    commit_msg = commit_message.strip() if commit_message.strip() else "Auto commit"
+    os.environ["PATH"] += ":/data/data/com.termux/files/usr/bin:/usr/bin:/bin"
+    git_path = None
+    for path in ["/data/data/com.termux/files/usr/bin/git", "/usr/bin/git", "/bin/git", shutil.which("git")]:
+        if path and os.path.exists(path) and os.access(path, os.X_OK):
+            git_path = path
+            break
+    if not git_path:
+        output.append("Error: Git binary not found or not executable")
+        return output
+    output.append(f"Using Git at: {git_path}")
+    try:
+        if not os.path.isdir(directory):
+            output.append(f"Error: Directory {directory} does not exist")
+            return output
+        os.chdir(directory)
+        output.append(f"Changed to directory: {directory}")
 
-    BoxLayout:
-        size_hint_y: None
-        height: 50
-        Label:
-            text: 'Local Vault Link'
-            size_hint_x: 0.3
-        TextInput:
-            id: local_vault_link
-            multiline: False
-            size_hint_x: 0.5
-        Button:
-            text: '📁'
-            size_hint_x: 0.2
-            on_press: root.select_local_vault()
+        for cmd, desc in [
+            ([git_path, "config", "user.name", username], "Configured user.name"),
+            ([git_path, "config", "user.email", email], "Configured user.email"),
+            ([git_path, "add", "."], "Staged changes"),
+        ]:
+            try:
+                result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+                output.append(f"{desc}: {result.stdout.strip() if result.stdout else 'Success'}")
+            except subprocess.CalledProcessError as e:
+                output.append(f"Error in {desc}: {e}\nSTDERR: {e.stderr}\nSTDOUT: {e.stdout}")
+                return output
 
-    BoxLayout:
-        size_hint_y: None
-        height: 50
-        Button:
-            text: 'Run Git Commands'
-            on_press: root.run_commands()
-        Button:
-            text: 'Clear Cache'
-            on_press: root.clear_cache()
+        result = subprocess.run([git_path, "remote", "-v"], check=True, capture_output=True, text=True)
+        if "origin" in result.stdout:
+            try:
+                result = subprocess.run([git_path, "remote", "set-url", "origin", repo_link], check=True, capture_output=True, text=True)
+                output.append(f"Updated remote origin to {repo_link}")
+            except subprocess.CalledProcessError as e:
+                output.append(f"Error setting remote URL: {e}\nSTDERR: {e.stderr}\nSTDOUT: {e.stdout}")
+                return output
+        else:
+            try:
+                result = subprocess.run([git_path, "remote", "add", "origin", repo_link], check=True, capture_output=True, text=True)
+                output.append(f"Added remote origin to {repo_link}")
+            except subprocess.CalledProcessError as e:
+                output.append(f"Error adding remote: {e}\nSTDERR: {e.stderr}\nSTDOUT: {e.stdout}")
+                return output
 
-    ScrollView:
-        Label:
-            id: output
-            text: root.output_text
-            size_hint_y: None
-            height: self.texture_size[1]
-            text_size: self.width, None
-            color: 0, 0, 0, 1
-```
+        try:
+            result = subprocess.run([git_path, "commit", "-m", commit_msg], check=True, capture_output=True, text=True)
+            output.append(f"Committed with message '{commit_msg}'")
+        except subprocess.CalledProcessError:
+            output.append("No changes to commit")
+
+        try:
+            result = subprocess.run([git_path, "push", "origin", "master"], check=True, capture_output=True, text=True)
+            output.append("Pushed to origin/master")
+        except subprocess.CalledProcessError as e:
+            output.append(f"Error pushing to origin/master: {e}\nSTDERR: {e.stderr}\nSTDOUT: {e.stdout}")
+            return output
+
+        output.append(f"Git operations completed successfully in {directory}")
+    except Exception as e:
+        output.append(f"Unexpected error: {e}")
+    return output
+
+class GitConfigLayout(BoxLayout):
+    output_text = StringProperty("")
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        cached_data = load_cached_data()
+        self.ids.username.text = cached_data["username"]
+        self.ids.email.text = cached_data["email"]
+        self.ids.repo_link.text = cached_data["repo_link"]
+        self.ids.commit_message.text = cached_data["commit_message"]
+        self.ids.local_vault_link.text = cached_data["local_vault_link"]
+        self.output_text = "*You must install Git before using this app.*\n\n" + \
+                          "How to install:\n1. Install Termux from F-Droid and run:\n   pkg install git\n\n" + \
+                          "How to login:\n1. In Termux, set username:\n   git config --global user.name \"your_username\"\n" + \
+                          "2. Set email:\n   git config --global user.email \"your_email\"\n" + \
+                          "3. Create a Personal Access Token (PAT) on GitHub and use it for authentication.\n" + \
+                          "   See: https://docs.github.com/en/authentication\n\n" + \
+                          "How to use:\n1. Create a private GitHub repository, e.g., 'Notes'.\n" + \
+                          "2. Copy the repository link and paste it into the text box.\n" + \
+                          "3. Fill in the data and click 'Run Git Commands'.\n\n" + \
+                          "Note:\nThis project is open source: https://github.com/DEV-12AM/Syncer.git\n" + \
+                          "We are NOT stealing any data from you <3"
+
+    def select_local_vault(self):
+        try:
+            self.file_chooser = FileChooserListView(path='/sdcard/', dirselect=True, filters=['*'])
+            self.file_chooser.bind(on_submit=self.set_local_vault)
+            self.add_widget(self.file_chooser)
+        except Exception as e:
+            self.output_text = f"Error opening file chooser: {e}\n"
+
+    def set_local_vault(self, instance, selection, *args):
+        if selection and os.path.isdir(selection[0]):
+            self.ids.local_vault_link.text = selection[0]
+        else:
+            self.output_text = "Error: Please select a valid directory.\n"
+        if hasattr(self, 'file_chooser'):
+            self.remove_widget(self.file_chooser)
+            del self.file_chooser
+
+    def run_commands(self):
+        Logger.info("Run Git Commands button pressed")
+        self.output_text = "Button pressed, starting Git commands...\n\n"
+        try:
+            # Check if Git is installed
+            git_installed, git_message, git_path = check_git_installed()
+            if not git_installed:
+                self.output_text = f"Error: {git_message}\n\nPlease open Termux and run:\npkg install git\nThen restart the app."
+                return
+
+            self.output_text += f"Git found: {git_message} (Path: {git_path})\n\n"
+
+            username = self.ids.username.text.strip()
+            email = self.ids.email.text.strip()
+            repo_link = self.ids.repo_link.text.strip()
+            commit_message = self.ids.commit_message.text.strip()
+            local_vault_link = self.ids.local_vault_link.text.strip()
+
+            if not all([username, email, repo_link, local_vault_link]):
+                self.output_text = "Error: Username, Email, Repository Link, and Local Vault Link are required.\n"
+                return
+
+            if not os.path.isdir(local_vault_link):
+                self.output_text = f"Error: Directory {local_vault_link} does not exist.\n"
+                return
+
+            save_cached_data({
+                "username": username,
+                "email": email,
+                "repo_link": repo_link,
+                "commit_message": commit_message,
+                "local_vault_link": local_vault_link
+            })
+
+            self.output_text += "Processing...\n\n"
+            output = ["Processing Local Vault..."]
+            output.extend(run_git_commands(local_vault_link, username, email, repo_link, commit_message))
+            output.append("\nAll operations completed.")
+            self.output_text = "\n\n".join(output)
+        except Exception as e:
+            self.output_text = f"Error in run_commands: {e}\n"
+            Logger.error(f"run_commands failed: {e}")
+
+    def clear_cache(self):
+        cache_file = os.path.expanduser("~/.git_config_cache.json")
+        if os.path.exists(cache_file):
+            try:
+                os.remove(cache_file)
+                self.output_text = "Cache cleared.\n"
+            except Exception as e:
+                self.output_text = f"Error clearing cache: {e}\n"
+        else:
+            self.output_text = "Cache file does not exist.\n"
+        self.ids.username.text = ""
+        self.ids.email.text = ""
+        self.ids.repo_link.text = ""
+        self.ids.commit_message.text = ""
+        self.ids.local_vault_link.text = ""
+
+class GitConfigApp(App):
+    def build(self):
+        return GitConfigLayout()
+
+if __name__ == "__main__":
+    GitConfigApp().run()
