@@ -63,12 +63,15 @@
         TextInput:
             id: local_vault_link
             multiline: False
-            size_hint_x: 0.8
+            size_hint_x: 0.75
             font_size: 16
+            readonly: True  # Prevent manual edits
         Button:
+            id: select_dir_button
             text: '📁'
-            size_hint_x: 0.2
-            font_size: 20
+            size_hint_x: 0.25
+            font_size: 24
+            background_color: 0.2, 0.6, 1, 1  # Blue for visibility
             on_press: root.select_local_vault()
 
     BoxLayout:
@@ -78,15 +81,17 @@
         Button:
             text: 'Run Git Commands'
             font_size: 16
+            background_color: 0.1, 0.7, 0.1, 1  # Green
             on_press: root.run_commands()
         Button:
             text: 'Clear Cache'
             font_size: 16
+            background_color: 1, 0.2, 0.2, 1  # Red
             on_press: root.clear_cache()
 
     ScrollView:
-        size_hint_y: 1
-        minimum_height: 200
+        size_hint_y: None
+        height: 200
         canvas.before:
             Color:
                 rgba: 0.9, 0.9, 0.9, 1
