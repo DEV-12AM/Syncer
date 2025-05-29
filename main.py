@@ -14,28 +14,35 @@ from kivy.logger import Logger
 import time
 
 def load_cached_data():
-    cache_file = os.path.expanduser("~/.cache/your_config_cache.json")
+    cache_file = "/storage/emulated/0/Download/Syncer/.git_config_cache.json"
     defaults = {"username": "", "email": "", "repo_link": "", "commit_message": "", "local_vault_link": ""}
     try:
-        if os.path.exists(cache_file):
+        if os.path.exists(cache_file) and os.access(cache_file, os.R_OK):
             with open(cache_file, 'r') as f:
                 data = json.load(f)
             if not isinstance(data, dict):
                 Logger.error(f"Cache file {cache_file} contains invalid data")
                 return defaults
             defaults.update(data)
+            Logger.info(f"Loaded cache from {cache_file}")
+        else:
+            Logger.info(f"Cache file {cache_file} not found or not readable")
         return defaults
     except Exception as e:
         Logger.error(f"Error loading cache: {e}")
         return defaults
 
 def save_cached_data(data):
-    cache_file = os.path.expanduser("~/.cache/your_config_cache.json")
+    cache_file = "/storage/emulated/0/Download/Syncer/.git_config_cache.json"
     try:
+        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
         with open(cache_file, 'w') as f:
             json.dump(data, f, indent=2)
+        Logger.info(f"Saved cache to {cache_file}")
+        return True
     except Exception as e:
         Logger.error(f"Error saving cache: {e}")
+        return False
 
 def get_repo_info(repo_link):
     try:
@@ -59,12 +66,11 @@ def upload_files_to_github(directory, token, owner, repo, branch="temp-sync"):
             output.append(f"Error: Directory {directory} does not exist")
             return output, uploaded_files
 
-        # Get default branch
         repo_info = requests.get(f"https://api.github.com/repos/{owner}/{repo}", headers=headers)
         if repo_info.status_code != 200:
             output.append(f"Error getting repo info: {repo_info.json().get('message', 'Unknown error')} (Status: {repo_info.status_code})")
             return output, uploaded_files
-        default_branch = repo_info.json().get("default_branch", "main")  # Fallback to 'main'
+        default_branch = repo_info.json().get("default_branch", "main")
 
         ref = requests.get(f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/{default_branch}", headers=headers)
         if ref.status_code != 200:
@@ -118,7 +124,6 @@ def trigger_github_workflow(token, owner, repo, branch, username, email, commit_
     }
     output = []
     try:
-        # Get default branch
         repo_info = requests.get(f"https://api.github.com/repos/{owner}/{repo}", headers=headers)
         if repo_info.status_code != 200:
             output.append(f"Error getting repo info: {repo_info.json().get('message', 'Unknown error')} (Status: {repo_info.status_code})")
@@ -144,7 +149,7 @@ def trigger_github_workflow(token, owner, repo, branch, username, email, commit_
             return output
         output.append("Triggered GitHub Actions workflow")
 
-        for _ in range(12):  # Extended to ~3 minutes
+        for _ in range(12):
             runs = requests.get(
                 f"https://api.github.com/repos/{owner}/{repo}/actions/runs",
                 headers=headers,
@@ -163,13 +168,11 @@ def trigger_github_workflow(token, owner, repo, branch, username, email, commit_
                     if conclusion == "success":
                         output.append("Workflow completed successfully")
                     else:
-                        # Fetch job logs
                         jobs = requests.get(f"https://api.github.com/repos/{owner}/{repo}/actions/runs/{run_id}/jobs", headers=headers)
                         if jobs.status_code == 200:
                             for job in jobs.json().get("jobs", []):
                                 if job["conclusion"] == "failure":
                                     output.append(f"Workflow failed in job '{job['name']}':")
-                                    logs = requests.get(job["html_url"], headers=headers)
                                     output.append(f"See logs: {job['html_url']}")
                         output.append(f"Workflow failed: {conclusion}")
                     return output
@@ -239,23 +242,27 @@ class GitConfigLayout(BoxLayout):
                 self.output_text = "Error: Invalid repository link. Use: https://github.com/owner/repo\n"
                 return
 
-            save_cached_data({
-                "username": username,
-                "email": email,
-                "repo_link": repo_link,
-                "commit_message": commit_message,
-                "local_vault_link": local_vault_link
-            })
-
             self.output_text += "Checking local vault files...\n\n"
             files = []
             for root, _, fs in os.walk(local_vault_link):
                 for f in fs:
                     files.append(os.path.relpath(os.path.join(root, f), local_vault_link))
             if not files:
-                self.output_text = "Error: No files found in {local_vault_link}. Add files to sync.\n"
+                self.output_text = f"Error: No files found in {local_vault_link}. Add files to sync.\n"
                 return
             self.output_text += f"Found {len(files)} file(s) to upload.\n\n"
+
+            self.output_text += "Saving cache...\n\n"
+            if save_cached_data({
+                "username": username,
+                "email": email,
+                "repo_link": repo_link,
+                "commit_message": commit_message,
+                "local_vault_link": local_vault_link
+            }):
+                self.output_text += "Cache saved successfully.\n\n"
+            else:
+                self.output_text += "Warning: Failed to save cache.\n\n"
 
             self.output_text += "Uploading files to GitHub...\n\n"
             output, uploaded_files = upload_files_to_github(local_vault_link, username, owner, repo)
@@ -276,13 +283,15 @@ class GitConfigLayout(BoxLayout):
             Logger.error(f"run_commands failed: {e}")
 
     def clear_cache(self):
-        cache_file = os.path.expanduser("~/.git_config_cache.json")
+        cache_file = "/storage/emulated/0/Download/Syncer/.git_config_cache.json"
         if os.path.exists(cache_file):
             try:
                 os.remove(cache_file)
                 self.output_text = "Cache cleared.\n"
+                Logger.info(f"Cache file {cache_file} deleted")
             except Exception as e:
                 self.output_text = f"Error clearing cache: {e}\n"
+                Logger.error(f"Error clearing cache: {e}")
         else:
             self.output_text = "Cache file does not exist.\n"
         self.ids.username.text = ""
