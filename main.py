@@ -18,21 +18,28 @@ from kivy.uix.filechooser import FileChooserListView
 from kivy.uix.popup import Popup
 from kivy.uix.button import Button
 from kivy.uix.label import Label
+from kivy.uix.textinput import TextInput
 from kivy.clock import Clock
 from kivy.logger import Logger
 import time
 
-# Mobile paths
-BASE_DIR = "/storage/emulated/0/Download/Syncer"
+# Platform-specific paths
+IS_MOBILE = os.path.exists("/sdcard/")
+if IS_MOBILE:
+    BASE_DIR = "/storage/emulated/0/Download/Syncer"
+    VAULT_DIR = "/sdcard/Obsidian-Vault"
+    STORAGE_PATHS = ["/sdcard/", "/storage/emulated/0/"]
+else:
+    BASE_DIR = os.path.join(os.path.expanduser("~"), ".syncer")
+    VAULT_DIR = os.path.join(os.path.expanduser("~"), "Obsidian-Vault")
+    STORAGE_PATHS = [os.path.expanduser("~")]
 CACHE_FILE = os.path.join(BASE_DIR, ".cache.json")
 TEMP_BACKUP = os.path.join(BASE_DIR, "backup.zip")
-LOCAL_BACKUP_DIR = os.path.join(BASE_DIR, "backups")
 
 def ensure_directories():
-    if not os.path.exists(BASE_DIR):
-        os.makedirs(BASE_DIR)
-    if not os.path.exists(LOCAL_BACKUP_DIR):
-        os.makedirs(LOCAL_BACKUP_DIR)
+    for dir_path in [BASE_DIR]:
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
 
 def load_cached_data():
     defaults = {"username": "", "email": "", "repo_link": "", "commit_message": "", "local_vault": "", "branch_name": ""}
@@ -68,6 +75,108 @@ def validate_repo_url(repo_link):
         raise ValueError("Invalid repo URL. Use: https://github.com/owner/repo")
     return repo_link
 
+def create_readme():
+    readme_content = """# Syncer App
+
+Sync your Obsidian Vault to a GitHub repository using a Kivy-based app on mobile (Android via Pydroid 3) or desktop (Linux/Windows).
+
+## Features
+- Sync local vault folder to GitHub repo.
+- Select or create custom branches (defaults to `main`).
+- Remote backup to `backup` branch.
+- Restore from latest remote backup.
+- Auto-merge pull requests.
+- Validates inputs and handles errors.
+
+## Requirements
+- **Python**: 3.13.2
+- **Kivy**: 2.3.1 (`pip install kivy==2.3.1`)
+- **Requests**: (`pip install requests`)
+- **GitHub PAT**: With `repo`, `workflow`, `admin:repo_hook` scopes (github.com/settings/tokens)
+- **GitHub Repo**: With `.github/workflows/git-sync.yml` (see repo for template)
+
+## Installation
+
+### Mobile (Pydroid 3, Android)
+1. Install Pydroid 3 from Google Play.
+2. Grant storage permissions:
+   ```bash
+   ls /sdcard/
+   ```
+3. Install dependencies:
+   ```bash
+   pip install kivy==2.3.1 requests
+   ```
+4. Create app directory:
+   ```bash
+   mkdir -p /storage/emulated/0/Download/Syncer
+   ```
+5. Save `main.py` and `gitconfig.kv` to `/storage/emulated/0/Download/Syncer/`.
+6. Create vault:
+   ```bash
+   mkdir -p /sdcard/Obsidian-Vault
+   echo "Test note" > /sdcard/Obsidian-Vault/test.md
+   ```
+
+### Desktop (Linux/Windows)
+1. Install Python 3.13.2.
+2. Install dependencies:
+   ```bash
+   pip install kivy==2.3.1 requests
+   ```
+3. Create app directory:
+   ```bash
+   mkdir -p ~/.syncer
+   ```
+4. Save `main.py` and `gitconfig.kv` to `~/.syncer/`.
+5. Create vault:
+   ```bash
+   mkdir -p ~/Obsidian-Vault
+   echo "Test note" > ~/Obsidian-Vault/test.md
+   ```
+
+## Usage
+1. **Run App**:
+   - Mobile:
+     ```bash
+     cd /storage/emulated/0/Download/Syncer
+     python main.py
+     ```
+   - Desktop:
+     ```bash
+     cd ~/.syncer
+     python main.py
+     ```
+2. **Fill Fields**:
+   - **GitHub PAT**: Your personal access token.
+   - **Git Email**: Your GitHub email (e.g., user@example.com).
+   - **Repository Link**: e.g., https://github.com/DEV-12AM/Syncer
+   - **Commit Message**: Optional, defaults to "Auto sync".
+   - **Local Vault Link**: Select vault folder (e.g., `/sdcard/Obsidian-Vault` or `~/Obsidian-Vault`) via 📁.
+   - **Branch Name**: Optional, defaults to `main`.
+3. **Actions**:
+   - **Fetch Branches**: List repo branches.
+   - **Run Git Commands**: Sync vault to repo.
+   - **Remote Backup**: Save vault zip to `backup` branch.
+   - **Restore Remote**: Restore from latest backup.
+   - **Clear Cache**: Reset fields and cache.
+
+## Troubleshooting
+- **Folder Picker Fails**: Ensure storage permissions (mobile) or folder access (desktop).
+- **Sync Fails**: Check PAT scopes, repo URL, and workflow file.
+- **Backup/Restore Fails**: Verify `backup` branch and PAT write access.
+- **Logs**:
+  - Mobile: `/storage/emulated/0/Download/Syncer/.kivy/logs/kivy_*.txt`
+  - Desktop: `~/.config/kivy/logs/kivy_*.txt`
+
+## Notes
+- Source: github.com/DEV-12AM/Syncer
+- PAT stored in cache (encrypted in future updates).
+- Workflow auto-creates PRs, merged automatically.
+
+"""
+    return base64.b64encode(readme_content.encode("utf-8")).decode("utf-8")
+
 def get_repo_info(repo_link, token):
     try:
         repo_link = validate_repo_url(repo_link)
@@ -84,7 +193,35 @@ def get_repo_info(repo_link, token):
             raise ValueError("API rate limit exceeded or access denied")
         if repo_info.status_code != 200:
             raise ValueError(f"Repo not found: {repo_info.json().get('message', 'Unknown error')}")
-        return owner, repo, repo_info.json().get("default_branch", "main")
+        
+        default_branch = repo_info.json().get("default_branch", "main")
+        # Check if default branch exists
+        branch_check = requests.get(f"https://api.github.com/repos/{owner}/{repo}/branches/main", headers=headers)
+        if branch_check.status_code != 200:
+            # Create main branch with initial commit
+            initial_content = base64.b64encode("Initial commit".encode("utf-8")).decode("utf-8")
+            commit_data = {
+                "message": "Initialize repository",
+                "content": initial_content,
+                "branch": "main"
+            }
+            create_file = requests.put(
+                f"https://api.github.com/repos/{owner}/{repo}/contents/.init",
+                headers=headers,
+                json=commit_data
+            )
+            if create_file.status_code not in (200, 201):
+                raise ValueError(f"Error creating main branch: {create_file.json().get('message', 'Unknown error')}")
+            # Set main as default
+            update_repo = requests.patch(
+                f"https://api.github.com/repos/{owner}/{repo}",
+                headers=headers,
+                json={"default_branch": "main"}
+            )
+            if update_repo.status_code != 200:
+                raise ValueError(f"Error setting main as default: {update_repo.json().get('message', 'Unknown error')}")
+            default_branch = "main"
+        return owner, repo, default_branch
     except requests.RequestException as e:
         raise ValueError(f"Network error: {e}")
     except Exception as e:
@@ -117,44 +254,6 @@ def create_zip(vault_path, zip_path):
     except Exception as e:
         return f"Zip creation failed: {e}"
 
-def local_backup_vault(vault_path):
-    output = []
-    try:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = os.path.join(LOCAL_BACKUP_DIR, f"backup_{timestamp}.zip")
-        zip_result = create_zip(vault_path, backup_path)
-        if "Error" in zip_result:
-            return [zip_result]
-        output.append(zip_result)
-        return output
-    except Exception as e:
-        output.append(f"Local backup error: {e}")
-        return output
-
-def restore_local_vault(vault_path):
-    output = []
-    try:
-        if not os.path.exists(LOCAL_BACKUP_DIR):
-            output.append(f"Error: No local backups found in {LOCAL_BACKUP_DIR}")
-            return output
-        backups = [f for f in os.listdir(LOCAL_BACKUP_DIR) if f.startswith("backup_") and f.endswith(".zip")]
-        if not backups:
-            output.append(f"Error: No local backups found in {LOCAL_BACKUP_DIR}")
-            return output
-        latest_backup = max(backups, key=lambda x: os.path.getctime(os.path.join(LOCAL_BACKUP_DIR, x)))
-        backup_path = os.path.join(LOCAL_BACKUP_DIR, latest_backup)
-
-        if os.path.exists(vault_path):
-            shutil.rmtree(vault_path)
-        os.makedirs(vault_path)
-        with zipfile.ZipFile(backup_path, 'r') as zf:
-            zf.extractall(vault_path)
-        output.append(f"Restored vault from {latest_backup}")
-        return output
-    except Exception as e:
-        output.append(f"Local restore error: {e}")
-        return output
-
 def remote_backup_vault(vault_path, token, owner, repo, default_branch):
     headers = {
         "Authorization": f"Bearer {token}",
@@ -170,42 +269,15 @@ def remote_backup_vault(vault_path, token, owner, repo, default_branch):
 
         # Check if backup branch exists
         backup_ref = requests.get(f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/backup", headers=headers)
-        if backup_ref.status_code == 200:
-            # Move backup to old-backup
-            old_backup_ref = requests.get(f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/old-backup", headers=headers)
-            if old_backup_ref.status_code == 200:
-                update_ref = requests.patch(
-                    f"https://api.github.com/repos/{owner}/{repo}/git/refs/heads/old-backup",
-                    headers=headers,
-                    json={"sha": backup_ref.json()["object"]["sha"]}
-                )
-                if update_ref.status_code != 200:
-                    output.append(f"Error updating old-backup: {update_ref.json().get('message', 'Unknown error')}")
-                    return output
-                output.append("Moved existing backup to old-backup")
-            else:
-                create_old_backup = requests.post(
-                    f"https://api.github.com/repos/{owner}/{repo}/git/refs",
-                    headers=headers,
-                    json={"ref": "refs/heads/old-backup", "sha": backup_ref.json()["object"]["sha"]}
-                )
-                if create_old_backup.status_code != 201:
-                    output.append(f"Error creating old-backup: {create_old_backup.json().get('message', 'Unknown error')}")
-                    return output
-                output.append("Created old-backup branch")
-
-        # Create or update backup branch
-        default_ref = requests.get(f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/{default_branch}", headers=headers)
-        if default_ref.status_code != 200:
-            output.append(f"Error getting {default_branch} ref: {default_ref.json().get('message', 'Unknown error')}")
-            return output
-        base_sha = default_ref.json()["object"]["sha"]
-
         if backup_ref.status_code != 200:
+            default_ref = requests.get(f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/{default_branch}", headers=headers)
+            if default_ref.status_code != 200:
+                output.append(f"Error getting {default_branch} ref: {default_ref.json().get('message', 'Unknown error')}")
+                return output
             create_backup = requests.post(
                 f"https://api.github.com/repos/{owner}/{repo}/git/refs",
                 headers=headers,
-                json={"ref": "refs/heads/backup", "sha": base_sha}
+                json={"ref": "refs/heads/backup", "sha": default_ref.json()["object"]["sha"]}
             )
             if create_backup.status_code != 201:
                 output.append(f"Error creating backup branch: {create_backup.json().get('message', 'Unknown error')}")
@@ -229,8 +301,12 @@ def remote_backup_vault(vault_path, token, owner, repo, default_branch):
         if upload.status_code not in (200, 201):
             output.append(f"Error uploading backup: {upload.json().get('message', 'Unknown error')}")
             return output
-        output.append(f"Uploaded backup_{timestamp}.zip")
+        output.append("Uploaded remote backup")
         os.remove(TEMP_BACKUP)
+
+        # Auto-merge PRs
+        pr_output = auto_merge_pull_requests(token, owner, repo)
+        output.extend(pr_output)
         return output
     except requests.RequestException as e:
         output.append(f"Network error: {e}")
@@ -246,7 +322,7 @@ def restore_remote_vault(vault_path, token, owner, repo):
     }
     output = []
     try:
-        # Get latest backup from backup branch
+        # Get latest backup
         contents = requests.get(f"https://api.github.com/repos/{owner}/{repo}/contents?ref=backup", headers=headers)
         if contents.status_code != 200:
             output.append(f"Error accessing backup branch: {contents.json().get('message', 'Unknown error')}")
@@ -283,6 +359,36 @@ def restore_remote_vault(vault_path, token, owner, repo):
         output.append(f"Restore error: {e}")
         return output
 
+def auto_merge_pull_requests(token, owner, repo):
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    output = []
+    try:
+        pulls = requests.get(f"https://api.github.com/repos/{owner}/{repo}/pulls", headers=headers)
+        if pulls.status_code != 200:
+            output.append(f"Error fetching PRs: {pulls.json().get('message', 'Unknown error')}")
+            return output
+        for pr in pulls.json():
+            pr_number = pr["number"]
+            merge = requests.put(
+                f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}/merge",
+                headers=headers,
+                json={"merge_method": "squash"}
+            )
+            if merge.status_code == 200:
+                output.append(f"Merged PR #{pr_number}")
+            else:
+                output.append(f"Error merging PR #{pr_number}: {merge.json().get('message', 'Unknown error')}")
+        return output
+    except requests.RequestException as e:
+        output.append(f"Network error merging PRs: {e}")
+        return output
+    except Exception as e:
+        output.append(f"Error merging PRs: {e}")
+        return output
+
 def upload_files_to_github(directory, token, owner, repo, branch, default_branch):
     headers = {
         "Authorization": f"Bearer {token}",
@@ -292,9 +398,30 @@ def upload_files_to_github(directory, token, owner, repo, branch, default_branch
     uploaded_files = []
     try:
         if not os.path.isdir(directory):
-            output.append(f"Error: Folder {directory} does not exist")
+            output.append(f"Error: Folder {directory} not found")
             return output, uploaded_files
 
+        # Check if README.md exists
+        readme_check = requests.get(f"https://api.github.com/repos/{owner}/{repo}/contents/readme.md?ref={branch}", headers=headers)
+        if readme_check.status_code == 404:
+            readme_content = create_readme()
+            data = {
+                "message": "Add README.md",
+                "content": readme_content,
+                "branch": branch
+            }
+            readme_upload = requests.put(
+                f"https://api.github.com/repos/{owner}/{repo}/contents/README.md",
+                headers=headers,
+                json=data
+            )
+            if readme_upload.status_code in (200, 201):
+                output.append("Uploaded README.md")
+                uploaded_files.append("README.md")
+            else:
+                output.append(f"Error uploading README: {readme_upload.json().get('message', 'Unknown error')}")
+
+        # Create or update branch
         ref = requests.get(f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/{branch}", headers=headers)
         if ref.status_code == 200:
             base_sha = ref.json()["object"]["sha"]
@@ -306,7 +433,7 @@ def upload_files_to_github(directory, token, owner, repo, branch, default_branch
                 return output, uploaded_files
             base_sha = ref.json()["object"]["sha"]
             create_branch = requests.post(
-                f"https://api.github.com/repos/{owner}/{repo}/git/refs",
+                f"https://api.github.com/repos/{}/{repo}/git/refs",
                 headers=headers,
                 json={"ref": f"refs/heads/{branch}", "sha": base_sha}
             )
@@ -315,6 +442,7 @@ def upload_files_to_github(directory, token, owner, repo, branch, default_branch
                 return output, uploaded_files
             output.append(f"Created branch: {branch}")
 
+        # Upload files
         for root, _, files in os.walk(directory):
             for file in files:
                 file_path = os.path.join(root, file)
@@ -332,19 +460,19 @@ def upload_files_to_github(directory, token, owner, repo, branch, default_branch
                         headers=headers,
                         json=data
                     )
-                    if upload.status_code not in (200, 201):
-                        output.append(f"Error uploading {rel_path}: {upload.json().get('message', 'Unknown error')}")
-                    else:
-                        output.append(f"Uploaded {rel_path}")
+                    if upload.status_code in (200, 201):
+                        output.append(f"Uploaded: {rel_path}")
                         uploaded_files.append(rel_path)
+                    else:
+                        output.append(f"Error uploading {rel_path}: {upload.json().get('message', 'Unknown error')}")
                 except Exception as e:
                     output.append(f"Error processing {rel_path}: {e}")
         return output, uploaded_files
     except requests.RequestException as e:
-        output.append(f"Network error uploading files: {e}")
+        output.append(f"Network error: {e}")
         return output, uploaded_files
     except Exception as e:
-        output.append(f"Unexpected error uploading files: {e}")
+        output.append(f"Unexpected error: {e}")
         return output, uploaded_files
 
 def trigger_github_workflow(token, owner, repo, branch, username, email, commit_message, default_branch):
@@ -353,8 +481,7 @@ def trigger_github_workflow(token, owner, repo, branch, username, email, commit_
         "Accept": "application/vnd.github.v3+json"
     }
     output = []
-    try:
-        workflow_data = {
+    try Johnston = {
             "ref": branch,
             "inputs": {
                 "username": username,
@@ -371,7 +498,7 @@ def trigger_github_workflow(token, owner, repo, branch, username, email, commit_
         if response.status_code != 204:
             output.append(f"Error triggering workflow: {response.json().get('message', 'Unknown error')}")
             return output
-        output.append("Triggered workflow")
+        output.append("Activated workflow")
 
         for _ in range(12):
             runs = requests.get(
@@ -380,65 +507,107 @@ def trigger_github_workflow(token, owner, repo, branch, username, email, commit_
                 params={"branch": branch}
             )
             if runs.status_code != 200:
-                output.append(f"Error checking workflow status: {runs.json().get('message', 'Unknown error')}")
+                output.append(f"Error checking status: {runs.json().get('message', 'Unknown error')}")
                 return output
             runs_data = runs.json().get("workflow_runs", [])
             if runs_data:
                 latest_run = runs_data[0]
                 status = latest_run["status"]
                 conclusion = latest_run["conclusion"]
-                run_id = latest_run["id"]
                 if status == "completed":
                     if conclusion == "success":
-                        output.append("Workflow completed successfully")
+                        output.append("Workflow completed")
                     else:
-                        jobs = requests.get(f"https://api.github.com/repos/{owner}/{repo}/actions/runs/{run_id}/jobs", headers=headers)
-                        if jobs.status_code == 200:
-                            for job in jobs.json().get("jobs", []):
-                                if job["conclusion"] == "failure":
-                                    output.append(f"Workflow failed: {job['name']}")
-                                    output.append(f"Logs: {job['html_url']}")
                         output.append(f"Workflow failed: {conclusion}")
                     return output
-            time.sleep(15)
+            time.sleep(1)
         output.append("Workflow timed out")
         return output
     except requests.RequestException as e:
-        output.append(f"Network error in workflow: {e}")
+        output.append(f"Network error: {e}")
         return output
     except Exception as e:
         output.append(f"Workflow error: {e}")
         return output
 
 class GitConfigLayout(BoxLayout):
-    output_text = StringProperty("")
+    output_text = StringProperty()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.output_text = "*Sync your vault to GitHub!*\n\n" + \
-                          "Steps:\n1. Get a PAT (repo, workflow scopes): github.com/settings/tokens\n" + \
-                          "2. Add .github/workflows/git-sync.yml to github.com/DEV-12AM/Syncer\n" + \
-                          "3. Set default branch (main/master).\n" + \
-                          "4. Fill fields, hit 'Run Git Commands'.\n\n" + \
-                          "Open source: github.com/DEV-12AM/Syncer\nNo sketchy stuff!\n"
-        Clock.schedule_once(self._load_cached_data, 0.1)
+                          "Steps:\n1. Get a PAT (repo, workflow, admin:repo scopes): github.com/settings/tokens\n" + \
+                          "2. Add .github/workflows/git-sync.yml to repo\n" + \
+                          "3. Fill fields, hit 'Run Git Commands'.\n\n" + \
+                          "Source: github.com/DEV-12AM/Syncer\n"
+        self.parent_scroll = ScrollView(
+            size_hint=(1, 1),
+            pos=(0, 0),
+            do_scroll_x=False,
+            do_scroll_y=True,
+            bar_width=4,
+            bar_color=(0.25, 0.55, 1, 1),
+            bar_inactive_color=(0.8, 0.8, 0.85, 1)
+        )
+        self.parent_scroll.add_widget(self)
+        self.add_branch_ui()
+        Clock.schedule_once(self._load_cached_data, 0.2)
+
+    def add_branch_ui(self):
+        branch_layout = BoxLayout(size_hint_y=None, height=55, spacing=5)
+        branch_label = Label(
+            text="Branch Name",
+            size_hint_y=None,
+            height=40,
+            font_size=18
+        )
+        self.branch_input = TextInput(
+            id="branch_name",
+            multiline=False,
+            size_hint_y=None,
+            height=50,
+            font_size=16,
+            hint_text="Leave blank for 'main'"
+        )
+        fetch_button = Button(
+            text="Fetch Branches",
+            size_hint_x=0.3,
+            font_size=16,
+            on_press=self._fetch_branches
+        )
+        remote_backup_button = Button(
+            text="Remote Backup",
+            size_hint_x=0.3,
+            font_size=16,
+            on_press=self._remote_backup
+        )
+        restore_remote_button = Button(
+            text="Restore Remote",
+            size_hint_x=0.3,
+            font_size=16,
+            on_press=self._restore_remote
+        )
+        branch_layout.add_widget(self.branch_input)
+        branch_layout.add_widget(fetch_button))
+        self.add_widget(branch_label, index=8)
+        self.add_widget(branch_layout, index=8)
+        self.add_widget(remote_backup_button, index=2)
+        self.add_widget(restore_remote_button, index=2)
 
     def _load_cached_data(self, dt):
-        cached_data = load_cached_data()
         try:
+            cached_data = load_cached_data()
             self.ids.username.text = cached_data["username"]
-            self.ids.email.text = cached_data["email"]
+            self.email_text = self.ids.email.text = cached_data["email"]
             self.ids.repo_link.text = cached_data["repo_link"]
-            self.ids.commit_message.text = cached_data["commit_message"]
+            self.ids_commit_message.text = cached_data["commit_message"]
             self.ids.local_vault_link.text = cached_data["local_vault"]
-            self.ids.branch_name.text = cached_data["branch_name"]
-            self.output_text += "Loaded saved settings.\n"
-            Logger.info("Loaded cached data")
+            self.branch_input.text = cached_data["branch_name"]
+            self.output_text += "Loaded settings.\n"
         except Exception as e:
             self.output_text = f"Error loading settings: {e}\n"
-            Logger.error(f"Error loading cached data: {e}")
 
-    def fetch_branches(self):
+    def _fetch_branches(self, instance):
         try:
             token = self.ids.username.text.strip()
             repo_link = self.ids.repo_link.text.strip()
@@ -447,126 +616,87 @@ class GitConfigLayout(BoxLayout):
                 return
             owner, repo, _ = get_repo_info(repo_link, token)
             branches = get_branches(owner, repo, token)
-            if branches:
-                self.output_text = f"Available branches: {', '.join(branches)}\n"
-            else:
-                self.output_text = "No branches found or error fetching branches.\n"
+            self.output_text = f"Branches: {', '.join(branches)}" if branches else "No branches found.\n"
         except ValueError as e:
             self.output_text = f"Error: {e}\n"
-        except Exception as e:
-            self.output_text = f"Error fetching branches: {e}\n"
 
-    def remote_backup(self):
+    def _remote_backup(self, instance):
         try:
             vault_path = self.ids.local_vault_link.text.strip()
             token = self.ids.username.text.strip()
             repo_link = self.ids.repo_link.text.strip()
             if not all([vault_path, token, repo_link]):
-                self.output_text = "Error: Vault, PAT, and repo URL required.\n"
+                self.output_text = "Error: Vault, PAT, repo required.\n"
                 return
             owner, repo, default_branch = get_repo_info(repo_link, token)
             output = remote_backup_vault(vault_path, token, owner, repo, default_branch)
             self.output_text = "\n".join(output) + "\n"
         except ValueError as e:
-            self.output_text = f"Error: {e}\n"
-        except Exception as e:
-            self.output_text = f"Remote backup error: {e}\n"
+            self.output_text += f"Error: {e}\n"
 
-    def restore_remote(self):
+    def _restore_remote(self, instance):
         try:
             vault_path = self.ids.local_vault_link.text.strip()
             token = self.ids.username.text.strip()
             repo_link = self.ids.repo_link.text.strip()
             if not all([vault_path, token, repo_link]):
-                self.output_text = "Error: Vault, PAT, and repo URL required.\n"
+                self.output_text = "Error: Vault, PAT, repo required.\n"
                 return
             owner, repo, _ = get_repo_info(repo_link, token)
             output = restore_remote_vault(vault_path, token, owner, repo)
             self.output_text = "\n".join(output) + "\n"
         except ValueError as e:
-            self.output_text = f"Error: {e}\n"
-        except Exception as e:
-            self.output_text = f"Restore remote error: {e}\n"
+            self.output_text += f"Error: {e}\n"
 
-    def local_backup(self):
+    def select_local_vault(self, instance=None):
         try:
-            vault_path = self.ids.local_vault_link.text.strip()
-            if not vault_path:
-                self.output_text = "Error: Vault path required.\n"
-                return
-            output = local_backup_vault(vault_path)
-            self.output_text = "\n".join(output) + "\n"
-        except Exception as e:
-            self.output_text = f"Local backup error: {e}\n"
-
-    def restore_local(self):
-        try:
-            vault_path = self.ids.local_vault_link.text.strip()
-            if not vault_path:
-                self.output_text = "Error: Vault path required.\n"
-                return
-            output = restore_local_vault(vault_path)
-            self.output_text = "\n".join(output) + "\n"
-        except Exception as e:
-            self.output_text = f"Local restore error: {e}\n"
-
-    def select_local_vault(self):
-        try:
-            base_paths = ["/sdcard/", "/storage/emulated/0/"]
             base_path = None
-            for path in base_paths:
-                if os.path.isdir(path) and os.access(path, os.R_OK):
+            for path in STORAGE_PATHS:
+                if os.path.exists(path) and os.access(path, os.R_OK):
                     base_path = path
                     break
             if not base_path:
-                self.output_text = "Error: No accessible storage path. Grant storage permissions in Pydroid 3.\n"
-                Logger.error("No accessible storage path")
+                self.output_text = "Error: No storage access. Grant permissions.\n"
                 return
 
             content = BoxLayout(orientation='vertical')
             self.file_chooser = FileChooserListView(
                 path=base_path,
                 dirselect=True,
-                filters=['.*'],
+                filters=['*'],
                 size_hint=(1, 0.8)
             )
-            button_layout = BoxLayout(size_hint=(1, None), height=50, padding=[10, 10], spacing=10)
-            select_button = Button(text='Select Folder', background_color=(0.2, 0.5, 1, 1))
-            close_button = Button(text='Close', background_color=(1, 0.3, 0.3, 1))
+            button_layout = BoxLayout(size_hint=(1, 0.2), spacing=10, padding=[10, 10])
+            select_button = Button(text='Select This Folder', background_color=(0.25, 0.55, 1, 1))
+            close_button = Button(text='Close', background_color=(1, 0.35, 0.35, 1))
             button_layout.add_widget(select_button)
             button_layout.add_widget(close_button)
             content.add_widget(self.file_chooser)
             content.add_widget(button_layout)
 
             self.popup = Popup(title='Choose Vault Folder', content=content, size_hint=(0.9, 0.9))
-            select_button.bind(on_press=self.select_current_folder)
+            select_button.bind(on_press=self._select_current_folder)
             close_button.bind(on_press=self.popup.dismiss)
-            self.file_chooser.bind(on_submit=self.set_local_vault)
+            self.file_chooser.bind(on_submit=self._set_local_vault)
             self.popup.open()
-            Logger.info(f"Opened folder picker at {base_path}")
         except PermissionError:
-            self.output_text = "Error: Storage permission denied. Enable in Pydroid 3 settings.\n"
-            Logger.error("PermissionError: Storage access denied")
+            self.output_text = "Error: Permission denied. Enable storage access.\n"
         except Exception as e:
-            self.output_text = f"Error opening folder picker: {e}\n"
-            Logger.error(f"Error in select_local_vault: {e}")
+            self.output_text = f"Error opening picker: {e}\n"
 
-    def select_current_folder(self, instance):
+    def _select_current_folder(self, instance):
         try:
             path = self.file_chooser.path
             if os.path.isdir(path):
                 self.ids.local_vault_link.text = path
                 self.output_text = f"Selected folder: {path}\n"
-                Logger.info(f"Selected folder: {path}")
             else:
                 self.output_text = f"Error: {path} is not a folder.\n"
-                Logger.error(f"Invalid folder: {path}")
             self.popup.dismiss()
         except Exception as e:
             self.output_text = f"Error selecting folder: {e}\n"
-            Logger.error(f"Error in select_current_folder: {e}")
 
-    def set_local_vault(self, instance, selection, *args):
+    def _set_local_vault(self, instance, selection, *args):
         try:
             if selection:
                 path = selection[0]
@@ -575,17 +705,13 @@ class GitConfigLayout(BoxLayout):
                 if os.path.isdir(path):
                     self.ids.local_vault_link.text = path
                     self.output_text = f"Selected folder: {path}\n"
-                    Logger.info(f"Selected folder: {path}")
                 else:
-                    self.output_text = f"Error: {path} is not a valid folder.\n"
-                    Logger.error(f"Invalid folder: {path}")
+                    self.output_text = f"Error: {path} is not a folder.\n"
             else:
                 self.output_text = "Error: No folder selected.\n"
-                Logger.error("No selection")
             self.popup.dismiss()
         except Exception as e:
             self.output_text = f"Error setting folder: {e}\n"
-            Logger.error(f"Error in set_local_vault: {e}")
 
     def run_commands(self):
         self.output_text = "Starting sync...\n"
@@ -595,7 +721,7 @@ class GitConfigLayout(BoxLayout):
             repo_link = self.ids.repo_link.text.strip()
             commit_message = self.ids.commit_message.text.strip()
             local_vault = self.ids.local_vault_link.text.strip()
-            branch_name = self.ids.branch_name.text.strip() or "main"
+            branch_name = self.branch_input.text.strip() or "main"
 
             if not all([token, email, repo_link, local_vault]):
                 self.output_text = "Error: Fill all required fields.\n"
@@ -628,25 +754,23 @@ class GitConfigLayout(BoxLayout):
                 "branch_name": branch_name
             }):
                 self.output_text += "Settings saved.\n"
-            else:
-                self.output_text += "Warning: Failed to save settings.\n"
 
             self.output_text += "Uploading files...\n"
             output, uploaded_files = upload_files_to_github(local_vault, token, owner, repo, branch_name, default_branch)
             self.output_text += "\n".join(output) + "\n"
             if not uploaded_files:
-                self.output_text += "Error: No files uploaded. Check folder.\n"
-                return
-            if any("Error" in line for line in output):
+                self.output_text += "Error: No files uploaded.\n"
                 return
 
             self.output_text += "Running workflow...\n"
-            output = trigger_github_workflow(token, owner, repo, branch_name, token, email, commit_message or "Auto sync", default_branch)
+            output = trigger_github_workflow(token, owner, repo, branch_name, token, email, commit_message or "Sync", default_branch)
             self.output_text += "\n".join(output) + "\n"
+
+            # Auto-merge PRs
+            pr_output = auto_merge_prs(token, owner, repo)
+            self.output_text += "\n".join(pr_output) + "\n"
         except ValueError as e:
-            self.output_text = f"Error: {e}\n"
-        except Exception as e:
-            self.output_text = f"Sync error: {e}\n"
+            self.output_text += f"Error: {e}\n"
 
     def clear_cache(self):
         if os.path.exists(CACHE_FILE):
@@ -656,21 +780,22 @@ class GitConfigLayout(BoxLayout):
             except Exception as e:
                 self.output_text = f"Error clearing cache: {e}\n"
         else:
-            self.output_text = "No cache found.\n"
+            self.output_text += "No cache found.\n"
         try:
             self.ids.username.text = ""
             self.ids.email.text = ""
             self.ids.repo_link.text = ""
             self.ids.commit_message.text = ""
             self.ids.local_vault_link.text = ""
-            self.ids.branch_name.text = ""
+            self.branch_input.text = ""
         except Exception as e:
-            self.output_text = f"Error resetting fields: {e}\n"
+            self.output_text = f"Error clearing fields: {e}\n"
 
 class GitConfigApp(App):
     def build(self):
         ensure_directories()
-        return GitConfigLayout()
+        layout = GitConfigLayout()
+        return layout.parent_scroll
 
 if __name__ == "__main__":
     GitConfigApp().run()
