@@ -1,4 +1,4 @@
-<GithubConfigLayout@BoxLayout>:
+<GitConfigLayout>:
     orientation: 'vertical'
     size_hint_y: None
     height: self.minimum_height
@@ -6,7 +6,7 @@
     spacing: 15
     canvas.before:
         Color:
-            rgba: 1, 1, 1, 1  # White background for layout
+            rgba: 1, 1, 1, 1  # White background
         Rectangle:
             pos: self.pos
             size: self.size
@@ -93,7 +93,7 @@
             font_size: 16
             background_color: 0.95, 0.95, 0.95, 1
             foreground_color: 0, 0, 0, 1
-            readonly: True  # Prevent manual edits
+            readonly: True
         Button:
             id: select_dir_button
             text: '📁'
@@ -137,12 +137,9 @@
             color: 0, 0, 0, 1
             font_size: 14
 
-# Root widget wrapping the GitConfigLayout to enable scrolling on smaller screens
 ScrollView:
     do_scroll_x: False
     do_scroll_y: True
-
-    GithubConfigLayout:
+    GitConfigLayout:
         size_hint_y: None
         height: self.minimum_height
-
