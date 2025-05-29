@@ -6,8 +6,8 @@
     orientation: 'vertical'
     size_hint: 1, None
     height: self.minimum_height
-    padding: [8, 8, 8, 5]
-    spacing: 6
+    padding: [10, 10, 10, 5]
+    spacing: 5
     canvas.before:
         Color:
             rgba: 0.96, 0.97, 1, 1
@@ -20,7 +20,7 @@
         size_hint_y: None
         height: 30
         font_size: 16
-        color: 0.15, 0.15, 0.2, 1
+        color: 0.1, 0.1, 0.15, 1
         bold: True
 
     TextInput:
@@ -29,17 +29,17 @@
         size_hint: 1, None
         height: 40
         font_size: 14
-        background_color: 0.9, 0.92, 0.96, 1
+        background_color: 0.92, 0.94, 0.98, 1
         foreground_color: 0, 0, 0, 1
         padding: [8, 8]
-        cursor_color: 0.25, 0.55, 1, 1
+        cursor_color: 0.2, 0.5, 1, 1
 
     Label:
         text: 'Email'
         size_hint_y: None
         height: 30
         font_size: 16
-        color: 0.15, 0.15, 0.2, 1
+        color: 0.1, 0.1, 0.15, 1
         bold: True
 
     TextInput:
@@ -48,7 +48,7 @@
         size_hint: 1, None
         height: 40
         font_size: 14
-        background_color: 0.9, 0.92, 0.96, 1
+        background_color: 0.92, 0.94, 0.98, 1
         foreground_color: 0, 0, 0, 1
         padding: [8, 8]
 
@@ -57,7 +57,7 @@
         size_hint_y: None
         height: 30
         font_size: 16
-        color: 0.15, 0.15, 0.2, 1
+        color: 0.1, 0.1, 0.15, 1
         bold: True
 
     TextInput:
@@ -66,7 +66,7 @@
         size_hint: 1, None
         height: 40
         font_size: 14
-        background_color: 0.9, 0.92, 0.96, 1
+        background_color: 0.92, 0.94, 0.98, 1
         foreground_color: 0, 0, 0, 1
         padding: [8, 8]
 
@@ -75,7 +75,7 @@
         size_hint_y: None
         height: 30
         font_size: 16
-        color: 0.15, 0.15, 0.2, 1
+        color: 0.1, 0.1, 0.15, 1
         bold: True
 
     TextInput:
@@ -84,7 +84,7 @@
         size_hint: 1, None
         height: 40
         font_size: 14
-        background_color: 0.9, 0.92, 0.96, 1
+        background_color: 0.92, 0.94, 0.98, 1
         foreground_color: 0, 0, 0, 1
         padding: [8, 8]
 
@@ -93,19 +93,19 @@
         size_hint_y: None
         height: 30
         font_size: 16
-        color: 0.15, 0.15, 0.2, 1
+        color: 0.1, 0.1, 0.15, 1
         bold: True
 
     BoxLayout:
         size_hint: 1, None
         height: 40
-        spacing: 6
+        spacing: 5
         TextInput:
             id: local_vault_link
             multiline: False
             size_hint_x: 0.7
             font_size: 14
-            background_color: 0.9, 0.92, 0.96, 1
+            background_color: 0.92, 0.94, 0.98, 1
             foreground_color: 0, 0, 0, 1
             readonly: True
             padding: [8, 8]
@@ -121,24 +121,24 @@
                 RoundedRectangle:
                     pos: self.pos
                     size: self.size
-                    radius: [4]
+                    radius: [6]
             on_press: root.select_local_vault()
 
     BoxLayout:
         size_hint: 1, None
         height: 40
-        spacing: 6
+        spacing: 5
         Button:
             text: 'Sync Now'
             font_size: 14
             background_color: 0, 0, 0, 0
             canvas.before:
                 Color:
-                    rgba: 0.15, 0.65, 0.35, 1
+                    rgba: 0.1, 0.6, 0.3, 1
                 RoundedRectangle:
                     pos: self.pos
                     size: self.size
-                    radius: [4]
+                    radius: [6]
             on_press: root.run_commands()
         Button:
             text: 'Reset Cache'
@@ -146,32 +146,32 @@
             background_color: 0, 0, 0, 0
             canvas.before:
                 Color:
-                    rgba: 1, 0.35, 0.35, 1
+                    rgba: 1, 0.3, 0.3, 1
                 RoundedRectangle:
                     pos: self.pos
                     size: self.size
-                    radius: [4]
+                    radius: [6]
             on_press: root.clear_cache()
 
     ScrollView:
         size_hint: 1, None
-        height: 150
+        height: 120
         canvas.before:
             Color:
-                rgba: 0.94, 0.95, 0.99, 1
+                rgba: 0.95, 0.96, 0.99, 1
             RoundedRectangle:
                 pos: self.pos
                 size: self.size
-                radius: [4]
+                radius: [6]
         Label:
             id: output
             text: root.output_text
             size_hint_y: None
             height: self.texture_size[1]
-            text_size: self.width - 12, None
-            color: 0.15, 0.15, 0.2, 1
+            text_size: self.width - 10, None
+            color: 0.1, 0.1, 0.15, 1
             font_size: 12
-            padding: [6, 6]
+            padding: [5, 5]
 
 ScrollView:
     size: Window.size
