@@ -1,7 +1,11 @@
 import os
 import json
 import base64
-import requests
+try:
+    import requests
+except ImportError:
+    print("Error: 'requests' module not found. Run: pip install requests")
+    exit(1)
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.properties import StringProperty
@@ -34,33 +38,38 @@ def save_cached_data(data):
         Logger.error(f"Error saving cache: {e}")
 
 def get_repo_info(repo_link):
-    """Extract owner and repo name from GitHub repo link."""
     try:
         if not repo_link.startswith("https://github.com/"):
             return None, None
         parts = repo_link.strip("/").split("/")
-        return parts[2], parts[3]
+        return parts[-2], parts[-1]
     except Exception as e:
         Logger.error(f"Error parsing repo link: {e}")
         return None, None
 
 def upload_files_to_github(directory, token, owner, repo, branch="temp-sync"):
-    """Upload files from directory to a temporary branch."""
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github.v3+json"
     }
     output = []
+    uploaded_files = []
     try:
         if not os.path.isdir(directory):
-            output.append(f"Error: {directory} does not exist")
-            return output
+            output.append(f"Error: Directory {directory} does not exist")
+            return output, uploaded_files
 
-        # Create a temporary branch
-        ref = requests.get(f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/master.json", headers=headers)
+        # Get default branch
+        repo_info = requests.get(f"https://api.github.com/repos/{owner}/{repo}", headers=headers)
+        if repo_info.status_code != 200:
+            output.append(f"Error getting repo info: {repo_info.json().get('message', 'Unknown error')} (Status: {repo_info.status_code})")
+            return output, uploaded_files
+        default_branch = repo_info.json().get("default_branch", "master")
+
+        ref = requests.get(f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/{default_branch}", headers=headers)
         if ref.status_code != 200:
-            output.append(f"Error getting master ref: {ref.json().get('message', 'Unknown error')}")
-            return output
+            output.append(f"Error getting {default_branch} ref: {ref.json().get('message', 'Unknown error')} (Status: {ref.status_code})")
+            return output, uploaded_files
         sha = ref.json()["object"]["sha"]
 
         create_branch = requests.post(
@@ -69,50 +78,60 @@ def upload_files_to_github(directory, token, owner, repo, branch="temp-sync"):
             json={"ref": f"refs/heads/{branch}", "sha": sha}
         )
         if create_branch.status_code != 201:
-            output.append(f"Error creating branch: {create_branch.json().get('message', 'Unknown error')}")
-            return output
+            output.append(f"Error creating branch: {create_branch.json().get('message', 'Unknown error')} (Status: {create_branch.status_code})")
+            return output, uploaded_files
         output.append(f"Created temporary branch: {branch}")
 
-        # Upload files
         for root, _, files in os.walk(directory):
             for file in files:
                 file_path = os.path.join(root, file)
                 rel_path = os.path.relpath(file_path, directory)
-                with open(file_path, "rb") as f:
-                    content = base64.b64encode(f.read()).decode("utf-8")
-                data = {
-                    "message": f"Add {rel_path}",
-                    "content": content,
-                    "branch": branch
-                }
-                upload = requests.put(
-                    f"https://api.github.com/repos/{owner}/{repo}/contents/{rel_path}",
-                    headers=headers,
-                    json=data
-                )
-                if upload.status_code not in (200, 201):
-                    output.append(f"Error uploading {rel_path}: {upload.json().get('message', 'Unknown error')}")
-                else:
-                    output.append(f"Uploaded {rel_path}")
-        return output
+                try:
+                    with open(file_path, "rb") as f:
+                        content = base64.b64encode(f.read()).decode("utf-8")
+                    data = {
+                        "message": f"Add {rel_path}",
+                        "content": content,
+                        "branch": branch
+                    }
+                    upload = requests.put(
+                        f"https://api.github.com/repos/{owner}/{repo}/contents/{rel_path}",
+                        headers=headers,
+                        json=data
+                    )
+                    if upload.status_code not in (200, 201):
+                        output.append(f"Error uploading {rel_path}: {upload.json().get('message', 'Unknown error')} (Status: {upload.status_code})")
+                    else:
+                        output.append(f"Uploaded {rel_path}")
+                        uploaded_files.append(rel_path)
+                except Exception as e:
+                    output.append(f"Error processing {rel_path}: {e}")
+        return output, uploaded_files
     except Exception as e:
         output.append(f"Unexpected error uploading files: {e}")
-        return output
+        return output, uploaded_files
 
 def trigger_github_workflow(token, owner, repo, branch, username, email, commit_message):
-    """Trigger a GitHub Actions workflow to run Git commands."""
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github.v3+json"
     }
     output = []
     try:
+        # Get default branch
+        repo_info = requests.get(f"https://api.github.com/repos/{owner}/{repo}", headers=headers)
+        if repo_info.status_code != 200:
+            output.append(f"Error getting repo info: {repo_info.json().get('message', 'Unknown error')} (Status: {repo_info.status_code})")
+            return output
+        default_branch = repo_info.json().get("default_branch", "master")
+
         workflow_data = {
             "ref": branch,
             "inputs": {
                 "username": username,
                 "email": email,
-                "commit_message": commit_message or "Auto commit"
+                "commit_message": commit_message or "Auto commit",
+                "default_branch": default_branch
             }
         }
         response = requests.post(
@@ -121,32 +140,41 @@ def trigger_github_workflow(token, owner, repo, branch, username, email, commit_
             json=workflow_data
         )
         if response.status_code != 204:
-            output.append(f"Error triggering workflow: {response.json().get('message', 'Unknown error')}")
+            output.append(f"Error triggering workflow: {response.json().get('message', 'Unknown error')} (Status: {response.status_code})")
             return output
         output.append("Triggered GitHub Actions workflow")
 
-        # Poll workflow status
-        for _ in range(10):  # Try for ~2 minutes
+        for _ in range(10):
             runs = requests.get(
                 f"https://api.github.com/repos/{owner}/{repo}/actions/runs",
                 headers=headers,
                 params={"branch": branch}
             )
             if runs.status_code != 200:
-                output.append(f"Error checking workflow status: {runs.json().get('message', 'Unknown error')}")
+                output.append(f"Error checking workflow status: {runs.json().get('message', 'Unknown error')} (Status: {runs.status_code})")
                 return output
             runs_data = runs.json().get("workflow_runs", [])
             if runs_data:
                 latest_run = runs_data[0]
                 status = latest_run["status"]
                 conclusion = latest_run["conclusion"]
+                run_id = latest_run["id"]
                 if status == "completed":
                     if conclusion == "success":
                         output.append("Workflow completed successfully")
                     else:
+                        # Fetch job logs
+                        jobs = requests.get(f"https://api.github.com/repos/{owner}/{repo}/actions/runs/{run_id}/jobs", headers=headers)
+                        if jobs.status_code == 200:
+                            for job in jobs.json().get("jobs", []):
+                                if job["conclusion"] == "failure":
+                                    output.append(f"Workflow failed in job '{job['name']}':")
+                                    for step in job["steps"]:
+                                        if step["conclusion"] == "failure":
+                                            output.append(f"Step '{step['name']}': {step.get('output', 'No output')}")
                         output.append(f"Workflow failed: {conclusion}")
                     return output
-            time.sleep(15)  # Wait before polling again
+            time.sleep(15)
         output.append("Workflow status: Timed out")
         return output
     except Exception as e:
@@ -165,11 +193,12 @@ class GitConfigLayout(BoxLayout):
         self.ids.commit_message.text = cached_data["commit_message"]
         self.ids.local_vault_link.text = cached_data["local_vault_link"]
         self.output_text = "*Enter your GitHub details to sync.*\n\n" + \
-                          "How to setup:\n1. Create a GitHub Personal Access Token (PAT) with 'repo' and 'workflow' scopes:\n   See: https://docs.github.com/en/authentication\n" + \
-                          "2. Add a workflow file (.github/workflows/git-sync.yml) to your repo (see app instructions).\n" + \
-                          "3. Fill in the fields and click 'Run Git Commands'.\n\n" + \
-                          "Note:\nThis project is open source: https://github.com/DEV-12AM/Syncer.git\n" + \
-                          "We are NOT stealing any data from you <3"
+                          "How to setup:\n1. Create a GitHub Personal Access Token (PAT) with 'repo' and 'workflow' scopes:\n   https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens\n" + \
+                          "2. Add .github/workflows/git-sync.yml to your repo (see https://github.com/DEV-12AM/Syncer).\n" + \
+                          "3. Ensure your repo has a default branch (e.g., master or main).\n" + \
+                          "4. Fill in the fields and click 'Run Git Commands'.\n\n" + \
+                          "Note:\nThis project is open source: https://github.com/DEV-12AM/Syncer\n" + \
+                          "We are NOT stealing any data from you <3\n"
 
     def select_local_vault(self):
         try:
@@ -190,24 +219,22 @@ class GitConfigLayout(BoxLayout):
 
     def run_commands(self):
         Logger.info("Run Git Commands button pressed")
-        self.output_text = "Button pressed, starting Git commands...\n\n"
+        self.output_text = "Button pressed, processing...\n\n"
         try:
-            username = self.ids.username.text.strip()
+            username = self.ids.username.text.strip()  # Used for PAT
             email = self.ids.email.text.strip()
             repo_link = self.ids.repo_link.text.strip()
             commit_message = self.ids.commit_message.text.strip()
             local_vault_link = self.ids.local_vault_link.text.strip()
 
             if not all([username, email, repo_link, local_vault_link]):
-                self.output_text = "Error: Username, Email, Repository Link, and Local Vault Link are required.\n"
+                self.output_text = "Error: PAT, Email, Repository Link, and Local Vault Link are required.\n"
                 return
 
             if not os.path.isdir(local_vault_link):
                 self.output_text = f"Error: Directory {local_vault_link} does not exist.\n"
                 return
 
-            # Get PAT from environment or prompt user (for testing, assume input)
-            token = os.getenv("GITHUB_TOKEN") or self.ids.username.text.strip()  # Replace with secure input if needed
             owner, repo = get_repo_info(repo_link)
             if not owner or not repo:
                 self.output_text = "Error: Invalid repository link. Use format: https://github.com/owner/repo\n"
@@ -222,13 +249,18 @@ class GitConfigLayout(BoxLayout):
             })
 
             self.output_text += "Uploading files to GitHub...\n\n"
-            output = upload_files_to_github(local_vault_link, token, owner, repo)
+            output, uploaded_files = upload_files_to_github(local_vault_link, username, owner, repo)
+            if not uploaded_files:
+                output.append("Error: No files uploaded. Check your local vault directory.")
+                self.output_text = "\n\n".join(output)
+                return
+
             if any("Error" in line for line in output):
                 self.output_text = "\n\n".join(output)
                 return
 
             self.output_text += "\n\nTriggering GitHub Actions workflow...\n\n"
-            output.extend(trigger_github_workflow(token, owner, repo, "temp-sync", username, email, commit_message))
+            output.extend(trigger_github_workflow(username, owner, repo, "temp-sync", username, email, commit_message))
             self.output_text = "\n\n".join(output)
         except Exception as e:
             self.output_text = f"Error in run_commands: {e}\n"
