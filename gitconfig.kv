@@ -1,212 +1,103 @@
-#:kivy 2.3.1
-#:import Clock kivy.clock.Clock
-#:import Window kivy.core.window.Window
-
 <GitConfigLayout>:
     orientation: 'vertical'
-
-
     padding: 20
     spacing: 10
-
-
-    size_hint: 1, None
-    height: self.minimum_height
-    padding: [10, 10, 10, 5]
-    spacing: 5
-    canvas.before:
-        Color:
-            rgba: 0.96, 0.97, 1, 1
-        Rectangle:
-            pos: self.pos
-            size: self.size
 
     Label:
         text: 'GitHub PAT (Token)'
         size_hint_y: None
         height: 40
         font_size: 18
-        color: 0.1, 0.1, 0.15, 1
-        bold: True
-
     TextInput:
         id: username
         multiline: False
-        size_hint: 1, None
+        size_hint_y: None
         height: 50
-        font_size: 14
-        background_color: 0.92, 0.94, 0.98, 1
-        foreground_color: 0, 0, 0, 1
-        padding: [8, 8]
-        cursor_color: 0.2, 0.5, 1, 1
+        font_size: 16
 
     Label:
         text: 'Git Email'
         size_hint_y: None
         height: 40
         font_size: 18
-        color: 0.1, 0.1, 0.15, 1
-        bold: True
-
-
-
-
-
-
     TextInput:
         id: email
         multiline: False
-        size_hint: 1, None
+        size_hint_y: None
         height: 50
-        font_size: 14
-        background_color: 0.92, 0.94, 0.98, 1
-        foreground_color: 0, 0, 0, 1
-        padding: [8, 8]
+        font_size: 16
 
     Label:
         text: 'Repository Link'
         size_hint_y: None
         height: 40
         font_size: 18
-        color: 0.1, 0.1, 0.15, 1
-        bold: True
-
-
-
-
-
-
     TextInput:
         id: repo_link
         multiline: False
-        size_hint: 1, None
-        height: 40
-        font_size: 14
-        background_color: 0.92, 0.94, 0.98, 1
-        foreground_color: 0, 0, 0, 1
-        padding: [8, 8]
+        size_hint_y: None
+        height: 50
+        font_size: 16
 
     Label:
         text: 'Commit Message (Optional)'
         size_hint_y: None
         height: 40
         font_size: 18
-        color: 0.1, 0.1, 0.15, 1
-        bold: True
-
-
-
-
-
-
     TextInput:
         id: commit_message
         multiline: False
-        size_hint: 1, None
+        size_hint_y: None
         height: 50
         font_size: 16
-        background_color: 0.92, 0.94, 0.98, 1
-        foreground_color: 0, 0, 0, 1
-        padding: [8, 8]
 
     Label:
-        text: 'Local Vault Folder'
+        text: 'Local Vault Link'
         size_hint_y: None
         height: 40
         font_size: 18
-        color: 0.1, 0.1, 0.15, 1
-        bold: True
-
     BoxLayout:
-        size_hint: 1, None
-
+        size_hint_y: None
         height: 50
         spacing: 10
-
-
-
-
         TextInput:
             id: local_vault_link
             multiline: False
             size_hint_x: 0.8
             font_size: 16
-            background_color: 0.92, 0.94, 0.98, 1
-            foreground_color: 0, 0, 0, 1
-            readonly: True
-            padding: [8, 8]
         Button:
-            id: select_dir_button
             text: '📁'
             size_hint_x: 0.2
             font_size: 20
-            background_color: 0, 0, 0, 0
-            canvas.before:
-                Color:
-                    rgba: 0.25, 0.55, 1, 1
-                RoundedRectangle:
-                    pos: self.pos
-                    size: self.size
-                    radius: [6]
             on_press: root.select_local_vault()
 
     BoxLayout:
-        size_hint: 1, None
+        size_hint_y: None
         height: 50
         spacing: 10
         Button:
             text: 'Run Git Commands'
             font_size: 16
-            background_color: 0, 0, 0, 0
-            canvas.before:
-                Color:
-                    rgba: 0.1, 0.6, 0.3, 1
-                RoundedRectangle:
-                    pos: self.pos
-                    size: self.size
-                    radius: [6]
             on_press: root.run_commands()
         Button:
             text: 'Clear Cache'
             font_size: 16
-            background_color: 0, 0, 0, 0
-            canvas.before:
-                Color:
-                    rgba: 1, 0.3, 0.3, 1
-                RoundedRectangle:
-                    pos: self.pos
-                    size: self.size
-                    radius: [6]
             on_press: root.clear_cache()
 
     ScrollView:
-        size_hint: 1, None
-        height: 120
+        size_hint_y: 1
+        minimum_height: 200
         canvas.before:
             Color:
-                rgba: 0.95, 0.96, 0.99, 1
-            RoundedRectangle:
+                rgba: 0.9, 0.9, 0.9, 1
+            Rectangle:
                 pos: self.pos
                 size: self.size
-                radius: [6]
         Label:
             id: output
             text: root.output_text
             size_hint_y: None
             height: self.texture_size[1]
-            text_size: self.width - 10, None
-            color: 0.1, 0.1, 0.15, 1
+            text_size: self.width, None
+            color: 0, 0, 0, 1
             font_size: 14
-            padding: [5, 5]
-
-ScrollView:
-    size: Window.size
-    pos: 0, 0
-    do_scroll_x: False
-    do_scroll_y: True
-    bar_width: 4
-    bar_color: 0.25, 0.55, 1, 1
-    bar_inactive_color: 0.8, 0.8, 0.85, 1
-    GitConfigLayout:
-        size_hint: 1, None
-        height: self.minimum_height
