@@ -14,7 +14,7 @@ from kivy.logger import Logger
 import time
 
 def load_cached_data():
-    cache_file = os.path.expanduser("~/.git_config_cache.json")
+    cache_file = os.path.expanduser("~/.cache/your_config_cache.json")
     defaults = {"username": "", "email": "", "repo_link": "", "commit_message": "", "local_vault_link": ""}
     try:
         if os.path.exists(cache_file):
@@ -30,7 +30,7 @@ def load_cached_data():
         return defaults
 
 def save_cached_data(data):
-    cache_file = os.path.expanduser("~/.git_config_cache.json")
+    cache_file = os.path.expanduser("~/.cache/your_config_cache.json")
     try:
         with open(cache_file, 'w') as f:
             json.dump(data, f, indent=2)
@@ -41,7 +41,7 @@ def get_repo_info(repo_link):
     try:
         if not repo_link.startswith("https://github.com/"):
             return None, None
-        parts = repo_link.strip("/").split("/")
+        parts = repo_link.rstrip("/").split("/")
         return parts[-2], parts[-1]
     except Exception as e:
         Logger.error(f"Error parsing repo link: {e}")
@@ -64,7 +64,7 @@ def upload_files_to_github(directory, token, owner, repo, branch="temp-sync"):
         if repo_info.status_code != 200:
             output.append(f"Error getting repo info: {repo_info.json().get('message', 'Unknown error')} (Status: {repo_info.status_code})")
             return output, uploaded_files
-        default_branch = repo_info.json().get("default_branch", "master")
+        default_branch = repo_info.json().get("default_branch", "main")  # Fallback to 'main'
 
         ref = requests.get(f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/{default_branch}", headers=headers)
         if ref.status_code != 200:
@@ -123,7 +123,7 @@ def trigger_github_workflow(token, owner, repo, branch, username, email, commit_
         if repo_info.status_code != 200:
             output.append(f"Error getting repo info: {repo_info.json().get('message', 'Unknown error')} (Status: {repo_info.status_code})")
             return output
-        default_branch = repo_info.json().get("default_branch", "master")
+        default_branch = repo_info.json().get("default_branch", "main")
 
         workflow_data = {
             "ref": branch,
@@ -144,7 +144,7 @@ def trigger_github_workflow(token, owner, repo, branch, username, email, commit_
             return output
         output.append("Triggered GitHub Actions workflow")
 
-        for _ in range(10):
+        for _ in range(12):  # Extended to ~3 minutes
             runs = requests.get(
                 f"https://api.github.com/repos/{owner}/{repo}/actions/runs",
                 headers=headers,
@@ -169,9 +169,8 @@ def trigger_github_workflow(token, owner, repo, branch, username, email, commit_
                             for job in jobs.json().get("jobs", []):
                                 if job["conclusion"] == "failure":
                                     output.append(f"Workflow failed in job '{job['name']}':")
-                                    for step in job["steps"]:
-                                        if step["conclusion"] == "failure":
-                                            output.append(f"Step '{step['name']}': {step.get('output', 'No output')}")
+                                    logs = requests.get(job["html_url"], headers=headers)
+                                    output.append(f"See logs: {job['html_url']}")
                         output.append(f"Workflow failed: {conclusion}")
                     return output
             time.sleep(15)
@@ -193,12 +192,12 @@ class GitConfigLayout(BoxLayout):
         self.ids.commit_message.text = cached_data["commit_message"]
         self.ids.local_vault_link.text = cached_data["local_vault_link"]
         self.output_text = "*Enter your GitHub details to sync.*\n\n" + \
-                          "How to setup:\n1. Create a GitHub Personal Access Token (PAT) with 'repo' and 'workflow' scopes:\n   https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens\n" + \
-                          "2. Add .github/workflows/git-sync.yml to your repo (see https://github.com/DEV-12AM/Syncer).\n" + \
-                          "3. Ensure your repo has a default branch (e.g., master or main).\n" + \
-                          "4. Fill in the fields and click 'Run Git Commands'.\n\n" + \
-                          "Note:\nThis project is open source: https://github.com/DEV-12AM/Syncer\n" + \
-                          "We are NOT stealing any data from you <3\n"
+                          "How to setup:\n1. Create a GitHub PAT with 'repo' and 'workflow' scopes: https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens\n" + \
+                          "2. Add .github/workflows/git-sync.yml to https://github.com/DEV-12AM/Syncer\n" + \
+                          "3. Ensure repo has a default branch (main or master).\n" + \
+                          "4. Fill fields and click 'Run Git Commands'.\n\n" + \
+                          "Note:\nOpen source: https://github.com/DEV-12AM/Syncer\n" + \
+                          "No data theft <3\n"
 
     def select_local_vault(self):
         try:
@@ -221,14 +220,14 @@ class GitConfigLayout(BoxLayout):
         Logger.info("Run Git Commands button pressed")
         self.output_text = "Button pressed, processing...\n\n"
         try:
-            username = self.ids.username.text.strip()  # Used for PAT
+            username = self.ids.username.text.strip()  # PAT
             email = self.ids.email.text.strip()
             repo_link = self.ids.repo_link.text.strip()
             commit_message = self.ids.commit_message.text.strip()
             local_vault_link = self.ids.local_vault_link.text.strip()
 
             if not all([username, email, repo_link, local_vault_link]):
-                self.output_text = "Error: PAT, Email, Repository Link, and Local Vault Link are required.\n"
+                self.output_text = "Error: PAT, Email, Repository Link, and Local Vault Link required.\n"
                 return
 
             if not os.path.isdir(local_vault_link):
@@ -237,7 +236,7 @@ class GitConfigLayout(BoxLayout):
 
             owner, repo = get_repo_info(repo_link)
             if not owner or not repo:
-                self.output_text = "Error: Invalid repository link. Use format: https://github.com/owner/repo\n"
+                self.output_text = "Error: Invalid repository link. Use: https://github.com/owner/repo\n"
                 return
 
             save_cached_data({
@@ -248,10 +247,20 @@ class GitConfigLayout(BoxLayout):
                 "local_vault_link": local_vault_link
             })
 
+            self.output_text += "Checking local vault files...\n\n"
+            files = []
+            for root, _, fs in os.walk(local_vault_link):
+                for f in fs:
+                    files.append(os.path.relpath(os.path.join(root, f), local_vault_link))
+            if not files:
+                self.output_text = "Error: No files found in {local_vault_link}. Add files to sync.\n"
+                return
+            self.output_text += f"Found {len(files)} file(s) to upload.\n\n"
+
             self.output_text += "Uploading files to GitHub...\n\n"
             output, uploaded_files = upload_files_to_github(local_vault_link, username, owner, repo)
             if not uploaded_files:
-                output.append("Error: No files uploaded. Check your local vault directory.")
+                output.append("Error: No files uploaded. Check vault directory.")
                 self.output_text = "\n\n".join(output)
                 return
 
