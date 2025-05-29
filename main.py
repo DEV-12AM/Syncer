@@ -1,11 +1,13 @@
 import os
-import subprocess
 import json
+import base64
+import requests
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.properties import StringProperty
 from kivy.uix.filechooser import FileChooserListView
 from kivy.logger import Logger
+import time
 
 def load_cached_data():
     cache_file = os.path.expanduser("~/.git_config_cache.json")
@@ -14,10 +16,10 @@ def load_cached_data():
         if os.path.exists(cache_file):
             with open(cache_file, 'r') as f:
                 data = json.load(f)
-                if not isinstance(data, dict):
-                    Logger.error(f"Cache file {cache_file} contains invalid data")
-                    return defaults
-                defaults.update(data)
+            if not isinstance(data, dict):
+                Logger.error(f"Cache file {cache_file} contains invalid data")
+                return defaults
+            defaults.update(data)
         return defaults
     except Exception as e:
         Logger.error(f"Error loading cache: {e}")
@@ -31,53 +33,125 @@ def save_cached_data(data):
     except Exception as e:
         Logger.error(f"Error saving cache: {e}")
 
-def check_git_installed():
+def get_repo_info(repo_link):
+    """Extract owner and repo name from GitHub repo link."""
     try:
-        result = subprocess.run(["git", "--version"], check=True, capture_output=True, text=True)
-        return True, result.stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return False, "Git is not installed or not found. Install Git via Termux: pkg install git"
+        if not repo_link.startswith("https://github.com/"):
+            return None, None
+        parts = repo_link.strip("/").split("/")
+        return parts[2], parts[3]
+    except Exception as e:
+        Logger.error(f"Error parsing repo link: {e}")
+        return None, None
 
-def run_git_commands(directory, username, email, repo_link, commit_message):
+def upload_files_to_github(directory, token, owner, repo, branch="temp-sync"):
+    """Upload files from directory to a temporary branch."""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
     output = []
-    commit_msg = commit_message.strip() if commit_message.strip() else "Auto commit"
-    # Set PATH to include Termux's Git binary
-    os.environ["PATH"] += ":/data/data/com.termux/files/usr/bin"
     try:
         if not os.path.isdir(directory):
-            output.append(f"Error: Directory {directory} does not exist")
+            output.append(f"Error: {directory} does not exist")
             return output
-        os.chdir(directory)
-        output.append(f"Changed to directory: {directory}")
 
-        subprocess.run(["git", "config", "user.name", username], check=True, capture_output=True, text=True)
-        subprocess.run(["git", "config", "user.email", email], check=True, capture_output=True, text=True)
-        output.append(f"Successfully configured Git user: {username} <{email}>")
+        # Create a temporary branch
+        ref = requests.get(f"https://api.github.com/repos/{owner}/{repo}/git/ref/heads/master.json", headers=headers)
+        if ref.status_code != 200:
+            output.append(f"Error getting master ref: {ref.json().get('message', 'Unknown error')}")
+            return output
+        sha = ref.json()["object"]["sha"]
 
-        result = subprocess.run(["git", "remote", "-v"], check=True, capture_output=True, text=True)
-        if "origin" in result.stdout:
-            subprocess.run(["git", "remote", "set-url", "origin", repo_link], check=True, capture_output=True, text=True)
-            output.append(f"Successfully updated remote origin to {repo_link}")
-        else:
-            subprocess.run(["git", "remote", "add", "origin", repo_link], check=True, capture_output=True, text=True)
-            output.append(f"Successfully added remote origin to {repo_link}")
+        create_branch = requests.post(
+            f"https://api.github.com/repos/{owner}/{repo}/git/refs",
+            headers=headers,
+            json={"ref": f"refs/heads/{branch}", "sha": sha}
+        )
+        if create_branch.status_code != 201:
+            output.append(f"Error creating branch: {create_branch.json().get('message', 'Unknown error')}")
+            return output
+        output.append(f"Created temporary branch: {branch}")
 
-        subprocess.run(["git", "add", "."], check=True, capture_output=True, text=True)
-        try:
-            subprocess.run(["git", "commit", "-m", commit_msg], check=True, capture_output=True, text=True)
-            output.append(f"Successfully committed with message '{commit_msg}'")
-        except subprocess.CalledProcessError:
-            output.append("No changes to commit")
-
-        subprocess.run(["git", "push", "origin", "master"], check=True, capture_output=True, text=True)
-        output.append(f"Successfully pushed to origin/master")
-
-        output.append(f"Git operations completed successfully in {directory}")
-    except subprocess.CalledProcessError as e:
-        output.append(f"Error executing Git command: {e}\n{e.stderr}")
+        # Upload files
+        for root, _, files in os.walk(directory):
+            for file in files:
+                file_path = os.path.join(root, file)
+                rel_path = os.path.relpath(file_path, directory)
+                with open(file_path, "rb") as f:
+                    content = base64.b64encode(f.read()).decode("utf-8")
+                data = {
+                    "message": f"Add {rel_path}",
+                    "content": content,
+                    "branch": branch
+                }
+                upload = requests.put(
+                    f"https://api.github.com/repos/{owner}/{repo}/contents/{rel_path}",
+                    headers=headers,
+                    json=data
+                )
+                if upload.status_code not in (200, 201):
+                    output.append(f"Error uploading {rel_path}: {upload.json().get('message', 'Unknown error')}")
+                else:
+                    output.append(f"Uploaded {rel_path}")
+        return output
     except Exception as e:
-        output.append(f"Unexpected error: {e}")
-    return output
+        output.append(f"Unexpected error uploading files: {e}")
+        return output
+
+def trigger_github_workflow(token, owner, repo, branch, username, email, commit_message):
+    """Trigger a GitHub Actions workflow to run Git commands."""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
+    output = []
+    try:
+        workflow_data = {
+            "ref": branch,
+            "inputs": {
+                "username": username,
+                "email": email,
+                "commit_message": commit_message or "Auto commit"
+            }
+        }
+        response = requests.post(
+            f"https://api.github.com/repos/{owner}/{repo}/actions/workflows/git-sync.yml/dispatches",
+            headers=headers,
+            json=workflow_data
+        )
+        if response.status_code != 204:
+            output.append(f"Error triggering workflow: {response.json().get('message', 'Unknown error')}")
+            return output
+        output.append("Triggered GitHub Actions workflow")
+
+        # Poll workflow status
+        for _ in range(10):  # Try for ~2 minutes
+            runs = requests.get(
+                f"https://api.github.com/repos/{owner}/{repo}/actions/runs",
+                headers=headers,
+                params={"branch": branch}
+            )
+            if runs.status_code != 200:
+                output.append(f"Error checking workflow status: {runs.json().get('message', 'Unknown error')}")
+                return output
+            runs_data = runs.json().get("workflow_runs", [])
+            if runs_data:
+                latest_run = runs_data[0]
+                status = latest_run["status"]
+                conclusion = latest_run["conclusion"]
+                if status == "completed":
+                    if conclusion == "success":
+                        output.append("Workflow completed successfully")
+                    else:
+                        output.append(f"Workflow failed: {conclusion}")
+                    return output
+            time.sleep(15)  # Wait before polling again
+        output.append("Workflow status: Timed out")
+        return output
+    except Exception as e:
+        output.append(f"Unexpected error in workflow: {e}")
+        return output
 
 class GitConfigLayout(BoxLayout):
     output_text = StringProperty("")
@@ -90,15 +164,10 @@ class GitConfigLayout(BoxLayout):
         self.ids.repo_link.text = cached_data["repo_link"]
         self.ids.commit_message.text = cached_data["commit_message"]
         self.ids.local_vault_link.text = cached_data["local_vault_link"]
-        self.output_text = "*You must install Git before using this app.*\n\n" + \
-                          "How to install:\n1. Install Termux from F-Droid and run:\n   pkg install git\n\n" + \
-                          "How to login:\n1. In Termux, set username:\n   git config --global user.name \"your_username\"\n" + \
-                          "2. Set email:\n   git config --global user.email \"your_email\"\n" + \
-                          "3. Create a Personal Access Token (PAT) on GitHub and use it for authentication.\n" + \
-                          "   See: https://docs.github.com/en/authentication\n\n" + \
-                          "How to use:\n1. Create a private GitHub repository, e.g., 'Notes'.\n" + \
-                          "2. Copy the repository link and paste it into the text box.\n" + \
-                          "3. Fill in the data and click 'Run Git Commands'.\n\n" + \
+        self.output_text = "*Enter your GitHub details to sync.*\n\n" + \
+                          "How to setup:\n1. Create a GitHub Personal Access Token (PAT) with 'repo' and 'workflow' scopes:\n   See: https://docs.github.com/en/authentication\n" + \
+                          "2. Add a workflow file (.github/workflows/git-sync.yml) to your repo (see app instructions).\n" + \
+                          "3. Fill in the fields and click 'Run Git Commands'.\n\n" + \
                           "Note:\nThis project is open source: https://github.com/DEV-12AM/Syncer.git\n" + \
                           "We are NOT stealing any data from you <3"
 
@@ -123,12 +192,6 @@ class GitConfigLayout(BoxLayout):
         Logger.info("Run Git Commands button pressed")
         self.output_text = "Button pressed, starting Git commands...\n\n"
         try:
-            # Check if Git is installed
-            git_installed, git_message = check_git_installed()
-            if not git_installed:
-                self.output_text = f"Error: {git_message}\n"
-                return
-
             username = self.ids.username.text.strip()
             email = self.ids.email.text.strip()
             repo_link = self.ids.repo_link.text.strip()
@@ -143,6 +206,13 @@ class GitConfigLayout(BoxLayout):
                 self.output_text = f"Error: Directory {local_vault_link} does not exist.\n"
                 return
 
+            # Get PAT from environment or prompt user (for testing, assume input)
+            token = os.getenv("GITHUB_TOKEN") or self.ids.username.text.strip()  # Replace with secure input if needed
+            owner, repo = get_repo_info(repo_link)
+            if not owner or not repo:
+                self.output_text = "Error: Invalid repository link. Use format: https://github.com/owner/repo\n"
+                return
+
             save_cached_data({
                 "username": username,
                 "email": email,
@@ -151,10 +221,14 @@ class GitConfigLayout(BoxLayout):
                 "local_vault_link": local_vault_link
             })
 
-            self.output_text = "Processing...\n\n"
-            output = ["Processing Local Vault..."]
-            output.extend(run_git_commands(local_vault_link, username, email, repo_link, commit_message))
-            output.append("\nAll operations completed.")
+            self.output_text += "Uploading files to GitHub...\n\n"
+            output = upload_files_to_github(local_vault_link, token, owner, repo)
+            if any("Error" in line for line in output):
+                self.output_text = "\n\n".join(output)
+                return
+
+            self.output_text += "\n\nTriggering GitHub Actions workflow...\n\n"
+            output.extend(trigger_github_workflow(token, owner, repo, "temp-sync", username, email, commit_message))
             self.output_text = "\n\n".join(output)
         except Exception as e:
             self.output_text = f"Error in run_commands: {e}\n"

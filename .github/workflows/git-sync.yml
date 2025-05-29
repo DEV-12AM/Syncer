@@ -1,0 +1,33 @@
+name: Git Sync
+on:
+  workflow_dispatch:
+    inputs:
+      username:
+        description: 'Git Username'
+        required: true
+      email:
+        description: 'Git Email'
+        required: true
+      commit_message:
+        description: 'Commit Message'
+        required: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout temporary branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || 'temp-sync' }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "${{ github.event.inputs.username }}"
+          git config user.email "${{ github.event.inputs.email }}"
+
+      - name: Commit and Push
+        run: |
+          git add .
+          git commit -m "${{ github.event.inputs.commit_message }}" || echo "No changes to commit"
+          git push origin master
