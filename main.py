@@ -558,13 +558,13 @@ class GitConfigLayout(BoxLayout):
             font_size=18
         )
         self.branch_input = TextInput(
-            id="branch_name",
             multiline=False,
             size_hint_y=None,
             height=50,
             font_size=16,
             hint_text="Leave blank for 'main'"
         )
+        self.branch_input.bind(text=self.on_branch_input)
         fetch_button = Button(
             text="Fetch Branches",
             size_hint_x=0.3,
@@ -589,6 +589,11 @@ class GitConfigLayout(BoxLayout):
         self.add_widget(branch_layout, index=8)
         self.add_widget(remote_backup_button, index=2)
         self.add_widget(restore_remote_button, index=2)
+
+    def on_branch_input(self, instance, value):
+        if not hasattr(self, 'ids'):
+            self.ids = {}
+        self.ids['branch_name'] = instance
 
     def _load_cached_data(self, dt):
         cached_data = load_cached_data()
@@ -822,3 +827,4 @@ class GitConfigApp(App):
 
 if __name__ == "__main__":
     GitConfigApp().run()
+
