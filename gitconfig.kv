@@ -1,4 +1,6 @@
 
+### Updated KV Code (`gitconfig.kv`)
+```kv
 # gitconfig.kv
 <GitConfigLayout>:
     orientation: 'vertical'
@@ -43,6 +45,28 @@
         height: 50
         font_size: 16
         hint_text: 'e.g., https://github.com/owner/repo'
+
+    Label:
+        text: 'Branch Name'
+        size_hint_y: None
+        height: 40
+        font_size: 18
+    BoxLayout:
+        size_hint_y: None
+        height: 50
+        spacing: 10
+        TextInput:
+            id: branch_name
+            multiline: False
+            size_hint_y: None
+            height: 50
+            font_size: 16
+            hint_text: 'Leave blank for "main"'
+        Button:
+            text: 'Fetch Branches'
+            size_hint_x: 0.3
+            font_size: 16
+            on_press: root.fetch_branches()
 
     Label:
         text: 'Commit Message'
@@ -96,6 +120,23 @@
             font_size: 16
             background_color: (1, 0.35, 0.35, 1)
             on_press: root.clear_cache()
+
+    BoxLayout:
+        size_hint_y: None
+        height: 50
+        spacing: 10
+        Button:
+            text: 'Remote Backup'
+            size_hint_x: 0.5
+            font_size: 16
+            background_color: (0.5, 0.5, 0.5, 1)
+            on_press: root.remote_backup()
+        Button:
+            text: 'Restore Remote'
+            size_hint_x: 0.5
+            font_size: 16
+            background_color: (0.5, 0.5, 0.5, 1)
+            on_press: root.restore_remote()
 
     Label:
         text: 'Output'
