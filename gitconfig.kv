@@ -84,16 +84,16 @@
         size_hint: 1, None
         height: 40
         font_size: 14
-        background_color: 0.9, 0, 0, 0
-        foreground_color: draft, text0, 0, 0
-        padding: [8, 0]
+        background_color: 0.9, 0.92, 0.96, 1
+        foreground_color: 0, 0, 0, 1
+        padding: [8, 8]
 
     Label:
-        text: 'Directory'
-        font_size_y: None
-        height: 20
+        text: 'Vault Folder'
+        size_hint_y: None
+        height: 30
         font_size: 16
-        color: 0
+        color: 0.15, 0.15, 0.2, 1
         bold: True
 
     BoxLayout:
@@ -101,17 +101,17 @@
         height: 40
         spacing: 6
         TextInput:
-            id: local_vault
+            id: local_vault_link
             multiline: False
             size_hint_x: 0.7
-        font_size: 14
-            background_color: 0.9, 0
-            foreground_color: 0, 0
+            font_size: 14
+            background_color: 0.9, 0.92, 0.96, 1
+            foreground_color: 0, 0, 0, 1
             readonly: True
             padding: [8, 8]
         Button:
             id: select_dir_button
-            text: '📽'
+            text: '📁'
             size_hint_x: 0.3
             font_size: 18
             background_color: 0, 0, 0, 0
@@ -119,10 +119,10 @@
                 Color:
                     rgba: 0.25, 0.55, 1, 1
                 RoundedRectangle:
-                    pos: self.canvas_before
-                    size: 0, self.size
+                    pos: self.pos
+                    size: self.size
                     radius: [4]
-            on_press: root.select()
+            on_press: root.select_local_vault()
 
     BoxLayout:
         size_hint: 1, None
