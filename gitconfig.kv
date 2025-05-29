@@ -1,5 +1,11 @@
+#:kivy 2.3.1
+#:import Clock kivy.clock.Clock
+#:import Window kivy.core.window.Window
+
 <GitConfigLayout>:
     orientation: 'vertical'
+    size_hint: 1, None
+    height: self.minimum_height
     padding: 20
     spacing: 10
 
@@ -8,6 +14,7 @@
         size_hint_y: None
         height: 40
         font_size: 18
+
     TextInput:
         id: username
         multiline: False
@@ -20,6 +27,7 @@
         size_hint_y: None
         height: 40
         font_size: 18
+
     TextInput:
         id: email
         multiline: False
@@ -32,6 +40,7 @@
         size_hint_y: None
         height: 40
         font_size: 18
+
     TextInput:
         id: repo_link
         multiline: False
@@ -44,6 +53,7 @@
         size_hint_y: None
         height: 40
         font_size: 18
+
     TextInput:
         id: commit_message
         multiline: False
@@ -56,6 +66,7 @@
         size_hint_y: None
         height: 40
         font_size: 18
+
     BoxLayout:
         size_hint_y: None
         height: 50
@@ -65,7 +76,9 @@
             multiline: False
             size_hint_x: 0.8
             font_size: 16
+            readonly: True
         Button:
+            id: select_dir_button
             text: '📁'
             size_hint_x: 0.2
             font_size: 20
@@ -85,8 +98,8 @@
             on_press: root.clear_cache()
 
     ScrollView:
-        size_hint_y: 1
-        minimum_height: 200
+        size_hint_y: None
+        height: 200
         canvas.before:
             Color:
                 rgba: 0.9, 0.9, 0.9, 1
@@ -101,3 +114,15 @@
             text_size: self.width, None
             color: 0, 0, 0, 1
             font_size: 14
+
+ScrollView:
+    size: Window.size
+    pos: 0, 0
+    do_scroll_x: False
+    do_scroll_y: True
+    bar_width: 4
+    bar_color: 0.25, 0.55, 1, 1
+    bar_inactive_color: 0.8, 0.8, 0.85, 1
+    GitConfigLayout:
+        size_hint: 1, None
+        height: self.minimum_height
